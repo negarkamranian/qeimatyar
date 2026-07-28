@@ -22,12 +22,14 @@ class Settings:
     )
     scopes: str = os.getenv(
         "BASALAM_SCOPES",
-        "vendor.profile.read vendor.product.read vendor.product.write",
+        "vendor.profile.read vendor.product.read",
     )
     webhook_secret: str = os.getenv("WEBHOOK_SECRET", "")
     cron_secret: str = os.getenv("CRON_SECRET", "")
     demo_mode: bool = _bool("DEMO_MODE", True)
     marketplace_trust_env: bool = _bool("MARKETPLACE_TRUST_ENV", False)
+    merchant_product_limit: int = int(os.getenv("MERCHANT_PRODUCT_LIMIT", "50"))
+    merchant_sync_hours: int = int(os.getenv("MERCHANT_SYNC_HOURS", "6"))
 
 
 settings = Settings()

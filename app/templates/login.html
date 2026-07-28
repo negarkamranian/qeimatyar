@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>ورود غرفه‌دار — قیمت‌یار</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/merchant.css">
+</head>
+<body class="login-body">
+  <header class="simple-header">
+    <a class="brand" href="/">
+      <span class="brand-mark">ق</span>
+      <span><strong>قیمت‌یار</strong><small>راهنمای قیمت غرفه</small></span>
+    </a>
+    <a href="/">بازگشت به جست‌وجوی قیمت</a>
+  </header>
+
+  <main class="login-main">
+    <section class="login-card">
+      <span class="basalam-mark">ب</span>
+      <p class="eyebrow">ویژه غرفه‌داران باسلام</p>
+      <h1>قیمت همه محصولاتت، یک‌جا</h1>
+      <p class="login-copy">
+        با اجازه شما محصولات غرفه خوانده می‌شوند و هر ۶ ساعت، بازه قیمت بازارشان تازه می‌شود.
+      </p>
+      <ul>
+        <li><span>✓</span> فقط دسترسی خواندن محصولات</li>
+        <li><span>✓</span> قیمت واقعی غرفه تغییر نمی‌کند</li>
+        <li><span>✓</span> حداقل و حداکثر پیشنهادی قابل تنظیم است</li>
+      </ul>
+      {% if oauth_ready %}
+      <a class="connect-button" href="/auth/basalam">اتصال امن به باسلام</a>
+      {% else %}
+      <button class="connect-button disabled" disabled>اتصال هنوز پیکربندی نشده</button>
+      <p class="setup-hint">مدیر سایت باید Client ID و Client Secret باسلام را تنظیم کند.</p>
+      {% endif %}
+      <small class="privacy-note">در هر زمان می‌توانید دسترسی برنامه را از حساب باسلام خود لغو کنید.</small>
+    </section>
+  </main>
+</body>
+</html>
+

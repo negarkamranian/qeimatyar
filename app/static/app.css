@@ -39,6 +39,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .brand small { color: var(--muted); font-size: 10px; }
 .method-link { color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600; }
 .method-link:hover { color: var(--green); }
+.header-links { display: flex; align-items: center; gap: 18px; }
+.merchant-link { color: var(--green); background: #edf6f2; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; }
+.merchant-link:hover { background: #dfeee8; }
 
 main { min-height: calc(100vh - 154px); }
 .hero {
@@ -216,6 +219,7 @@ footer p { margin: 0; }
 @media (max-width: 700px) {
   .site-header { height: 70px; }
   .brand small, .method-link { display: none; }
+  .header-links { gap: 0; }
   .hero { margin-top: 45px; }
   .hero h1 { font-size: 37px; }
   .search-box { padding: 10px; }

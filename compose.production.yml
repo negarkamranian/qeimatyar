@@ -39,8 +39,18 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  scheduler:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      app:
+        condition: service_healthy
+    command: ["python", "-m", "app.scheduler"]
+
 volumes:
   app_data:
   caddy_data:
   caddy_config:
-

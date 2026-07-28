@@ -19,7 +19,12 @@
       </span>
       <span><strong>قیمت‌یار</strong><small>قیمت‌گذاری با داده واقعی بازار</small></span>
     </a>
-    <a class="method-link" href="#method">روش محاسبه</a>
+    <nav class="header-links">
+      <a class="method-link" href="#method">روش محاسبه</a>
+      <a class="merchant-link" href="{{ '/merchant' if merchant_connected else '/login' }}">
+        {{ 'محصولات غرفه' if merchant_connected else 'ورود غرفه‌دار' }}
+      </a>
+    </nav>
   </header>
 
   <main>

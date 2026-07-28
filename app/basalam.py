@@ -12,7 +12,9 @@ from app.config import settings
 
 
 class BasalamError(RuntimeError):
-    pass
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def _fernet() -> Fernet:
@@ -53,6 +55,18 @@ class BasalamClient:
                 "client_secret": settings.client_secret,
                 "redirect_uri": settings.redirect_uri,
                 "code": code,
+            },
+        )
+
+    async def refresh_access_token(self, refresh_token: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"{self.auth_base}/oauth/token",
+            json={
+                "grant_type": "refresh_token",
+                "client_id": settings.client_id,
+                "client_secret": settings.client_secret,
+                "refresh_token": refresh_token,
             },
         )
 
@@ -104,10 +118,19 @@ class BasalamClient:
         if token:
             headers["Authorization"] = f"Bearer {token}"
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
+            async with httpx.AsyncClient(
+                timeout=20,
+                follow_redirects=True,
+                trust_env=settings.marketplace_trust_env,
+            ) as client:
                 response = await client.request(method, url, headers=headers, **kwargs)
                 response.raise_for_status()
                 return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise BasalamError(
+                f"Basalam request failed: HTTP {exc.response.status_code}",
+                exc.response.status_code,
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise BasalamError(f"Basalam request failed: {exc}") from exc
 

@@ -77,8 +77,43 @@ def init_db() -> None:
                 period_end TEXT,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS merchant_products (
+                user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                product_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                current_price INTEGER NOT NULL DEFAULT 0,
+                stock INTEGER NOT NULL DEFAULT 0,
+                image_url TEXT,
+                market_low INTEGER,
+                market_suggested INTEGER,
+                market_high INTEGER,
+                user_min INTEGER,
+                user_max INTEGER,
+                confidence INTEGER,
+                sample_size INTEGER,
+                source_counts TEXT NOT NULL DEFAULT '{}',
+                estimate_error TEXT,
+                synced_at TEXT NOT NULL,
+                estimated_at TEXT,
+                PRIMARY KEY (user_id, product_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_merchant_products_user
+              ON merchant_products(user_id);
             """
         )
+        account_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(accounts)").fetchall()
+        }
+        migrations = {
+            "user_name": "ALTER TABLE accounts ADD COLUMN user_name TEXT",
+            "token_expires_at": "ALTER TABLE accounts ADD COLUMN token_expires_at TEXT",
+            "last_synced_at": "ALTER TABLE accounts ADD COLUMN last_synced_at TEXT",
+            "sync_status": "ALTER TABLE accounts ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'idle'",
+            "sync_error": "ALTER TABLE accounts ADD COLUMN sync_error TEXT",
+        }
+        for column, statement in migrations.items():
+            if column not in account_columns:
+                db.execute(statement)
 
 
 def seed_demo() -> None:
@@ -110,4 +145,3 @@ def seed_demo() -> None:
 def rows(query: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
     with connection() as db:
         return [dict(row) for row in db.execute(query, params).fetchall()]
-

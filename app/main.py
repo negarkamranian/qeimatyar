@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -23,7 +23,9 @@ from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
 from app.config import settings
 from app.db import connection, init_db, now_iso, rows, seed_demo
 from app.marketplaces import analyze_listings, market_crawler
+from app.merchant_sync import merchant_sync, token_expiry_iso
 from app.pricing import decide_reprice, recommend_price
+from app.sessions import COOKIE_NAME, SESSION_SECONDS, create_session, read_session
 
 BASE = Path(__file__).resolve().parent
 logger = logging.getLogger(__name__)
@@ -54,6 +56,11 @@ class MarketSearchInput(BaseModel):
     product_name: str = Field(min_length=2, max_length=160)
 
 
+class RangeOverrideInput(BaseModel):
+    min_price: int | None = Field(default=None, gt=0)
+    max_price: int | None = Field(default=None, gt=0)
+
+
 class SearchRateLimiter:
     def __init__(self, limit: int = 20, window_seconds: int = 60) -> None:
         self.limit = limit
@@ -78,11 +85,50 @@ search_rate_limiter = SearchRateLimiter()
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
+    user_id = read_session(request.cookies.get(COOKIE_NAME))
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"demo_mode": settings.demo_mode},
+        context={"demo_mode": settings.demo_mode, "merchant_connected": bool(user_id)},
     )
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if read_session(request.cookies.get(COOKIE_NAME)):
+        return RedirectResponse("/merchant")
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"oauth_ready": bool(settings.client_id and settings.client_secret)},
+    )
+
+
+@app.get("/merchant", response_class=HTMLResponse)
+def merchant_page(request: Request):
+    user_id = read_session(request.cookies.get(COOKIE_NAME))
+    if not user_id:
+        return RedirectResponse("/login")
+    account = rows(
+        "SELECT vendor_title,user_name FROM accounts WHERE user_id=?",
+        (user_id,),
+    )
+    if not account:
+        response = RedirectResponse("/login")
+        response.delete_cookie(COOKIE_NAME)
+        return response
+    return templates.TemplateResponse(
+        request=request,
+        name="merchant.html",
+        context={"account": account[0]},
+    )
+
+
+@app.post("/logout")
+def logout() -> RedirectResponse:
+    response = RedirectResponse("/", status_code=303)
+    response.delete_cookie(COOKIE_NAME)
+    return response
 
 
 @app.get("/health")
@@ -149,7 +195,12 @@ def connect_basalam() -> RedirectResponse:
 
 
 @app.get("/auth/basalam/callback")
-async def auth_callback(request: Request, code: str, state: str) -> RedirectResponse:
+async def auth_callback(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    code: str,
+    state: str,
+) -> RedirectResponse:
     expected = request.cookies.get("oauth_state", "")
     if not expected or not hmac.compare_digest(expected, state):
         raise HTTPException(400, "Invalid OAuth state.")
@@ -163,26 +214,146 @@ async def auth_callback(request: Request, code: str, state: str) -> RedirectResp
         with connection() as db:
             db.execute(
                 """INSERT INTO accounts
-                (user_id,vendor_id,vendor_title,access_token,refresh_token,connected_at)
-                VALUES (?,?,?,?,?,?)
+                (user_id,vendor_id,vendor_title,user_name,access_token,refresh_token,
+                 token_expires_at,connected_at,sync_status)
+                VALUES (?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(user_id) DO UPDATE SET
                   vendor_id=excluded.vendor_id, vendor_title=excluded.vendor_title,
+                  user_name=excluded.user_name,
                   access_token=excluded.access_token, refresh_token=excluded.refresh_token,
-                  connected_at=excluded.connected_at""",
+                  token_expires_at=excluded.token_expires_at,
+                  connected_at=excluded.connected_at,sync_status='queued',
+                  sync_error=NULL""",
                 (
                     user["id"],
                     vendor["id"],
                     vendor.get("title", "غرفه باسلام"),
+                    user.get("name") or user.get("username") or "غرفه‌دار",
                     encrypt_token(access),
                     encrypt_token(token_data["refresh_token"]) if token_data.get("refresh_token") else None,
+                    token_expiry_iso(token_data.get("expires_in")),
                     now_iso(),
+                    "queued",
                 ),
             )
     except (BasalamError, KeyError) as exc:
         raise HTTPException(502, str(exc)) from exc
-    response = RedirectResponse("/?connected=1")
+    background_tasks.add_task(merchant_sync.sync_user, int(user["id"]))
+    response = RedirectResponse("/merchant")
     response.delete_cookie("oauth_state")
+    response.set_cookie(
+        COOKIE_NAME,
+        create_session(int(user["id"])),
+        max_age=SESSION_SECONDS,
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+    )
     return response
+
+
+def _merchant_user(request: Request) -> int:
+    user_id = read_session(request.cookies.get(COOKIE_NAME))
+    if not user_id:
+        raise HTTPException(401, "برای مشاهده غرفه وارد شوید.")
+    return user_id
+
+
+@app.get("/api/merchant/dashboard")
+def merchant_dashboard(request: Request) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    account_rows = rows(
+        """SELECT user_id,vendor_id,vendor_title,user_name,last_synced_at,
+        sync_status,sync_error FROM accounts WHERE user_id=?""",
+        (user_id,),
+    )
+    if not account_rows:
+        raise HTTPException(401, "اتصال غرفه پیدا نشد.")
+    account = account_rows[0]
+    products = rows(
+        """SELECT * FROM merchant_products WHERE user_id=?
+        ORDER BY stock > 0 DESC, estimate_error IS NULL DESC, title""",
+        (user_id,),
+    )
+    ready = 0
+    for product in products:
+        product["source_counts"] = json.loads(product.get("source_counts") or "{}")
+        product["effective_min"] = product["user_min"] or product["market_low"]
+        product["effective_max"] = product["user_max"] or product["market_high"]
+        product["customized"] = bool(product["user_min"] or product["user_max"])
+        if product["market_suggested"]:
+            ready += 1
+    return {
+        "account": account,
+        "summary": {
+            "products": len(products),
+            "estimated": ready,
+            "customized": sum(1 for item in products if item["customized"]),
+            "refresh_hours": settings.merchant_sync_hours,
+            "product_limit": settings.merchant_product_limit,
+        },
+        "products": products,
+    }
+
+
+@app.post("/api/merchant/sync")
+def merchant_manual_sync(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    account = rows("SELECT sync_status FROM accounts WHERE user_id=?", (user_id,))
+    if not account:
+        raise HTTPException(404, "غرفه پیدا نشد.")
+    if account[0]["sync_status"] in {"running", "queued"}:
+        return {"ok": True, "status": account[0]["sync_status"]}
+    with connection() as db:
+        db.execute(
+            "UPDATE accounts SET sync_status='queued',sync_error=NULL WHERE user_id=?",
+            (user_id,),
+        )
+    background_tasks.add_task(merchant_sync.sync_user, user_id)
+    return {"ok": True, "status": "queued"}
+
+
+@app.patch("/api/merchant/products/{product_id}/range")
+def update_merchant_range(
+    product_id: int,
+    payload: RangeOverrideInput,
+    request: Request,
+) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    product_rows = rows(
+        """SELECT market_low,market_high FROM merchant_products
+        WHERE user_id=? AND product_id=?""",
+        (user_id, product_id),
+    )
+    if not product_rows:
+        raise HTTPException(404, "محصول پیدا نشد.")
+    market = product_rows[0]
+    effective_min = payload.min_price or market["market_low"]
+    effective_max = payload.max_price or market["market_high"]
+    if effective_min and effective_max and effective_min > effective_max:
+        raise HTTPException(422, "حداقل قیمت نمی‌تواند از حداکثر بیشتر باشد.")
+    with connection() as db:
+        db.execute(
+            """UPDATE merchant_products SET user_min=?,user_max=?
+            WHERE user_id=? AND product_id=?""",
+            (payload.min_price, payload.max_price, user_id, product_id),
+        )
+    return {"ok": True}
+
+
+@app.post("/internal/merchant-sync")
+async def scheduled_merchant_sync(
+    x_cron_secret: str = Header(default=""),
+) -> dict[str, Any]:
+    if not settings.cron_secret or not hmac.compare_digest(
+        x_cron_secret, settings.cron_secret
+    ):
+        raise HTTPException(401, "Invalid scheduler secret.")
+    results = await merchant_sync.sync_due_users()
+    return {"ok": True, "accounts": len(results), "results": results}
 
 
 def _product_payload(product: dict[str, Any]) -> dict[str, Any]:
@@ -199,8 +370,17 @@ def _product_payload(product: dict[str, Any]) -> dict[str, Any]:
     return product
 
 
+def _legacy_demo_only() -> None:
+    if not settings.demo_mode:
+        raise HTTPException(
+            410,
+            "این مسیر قدیمی غیرفعال است؛ از داشبورد راهنمای قیمت غرفه استفاده کنید.",
+        )
+
+
 @app.get("/api/dashboard")
 def dashboard() -> dict[str, Any]:
+    _legacy_demo_only()
     products = rows(
         """SELECT p.*, po.enabled, po.floor_price, po.objective,
         po.interval_days, po.max_drop_percent, po.last_changed_at
@@ -230,6 +410,7 @@ def dashboard() -> dict[str, Any]:
 
 @app.post("/api/products/{product_id}/policy")
 def save_policy(product_id: int, payload: PolicyInput) -> dict[str, Any]:
+    _legacy_demo_only()
     with connection() as db:
         product = db.execute("SELECT price FROM products WHERE id=?", (product_id,)).fetchone()
         if not product:
@@ -259,6 +440,7 @@ def save_policy(product_id: int, payload: PolicyInput) -> dict[str, Any]:
 
 @app.post("/api/products/{product_id}/apply")
 async def apply_recommendation(product_id: int) -> dict[str, Any]:
+    _legacy_demo_only()
     with connection() as db:
         row = db.execute(
             """SELECT p.*, po.objective FROM products p
@@ -300,6 +482,7 @@ async def apply_recommendation(product_id: int) -> dict[str, Any]:
 
 @app.post("/api/sync")
 async def sync_products() -> dict[str, Any]:
+    _legacy_demo_only()
     if settings.demo_mode:
         return {"ok": True, "synced": len(rows("SELECT id FROM products")), "demo": True}
     with connection() as db:
@@ -363,6 +546,7 @@ async def sync_products() -> dict[str, Any]:
 
 @app.post("/internal/reprice")
 async def scheduled_reprice(x_cron_secret: str = Header(default="")) -> dict[str, Any]:
+    _legacy_demo_only()
     if not settings.cron_secret or not hmac.compare_digest(x_cron_secret, settings.cron_secret):
         raise HTTPException(401, "Invalid scheduler secret.")
     changed: list[dict[str, int]] = []
