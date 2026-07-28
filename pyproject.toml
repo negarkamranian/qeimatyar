@@ -1,0 +1,19 @@
+[project]
+name = "nerkhban"
+version = "0.2.0"
+description = "Price guidance and guarded smart pricing for Basalam vendors"
+requires-python = ">=3.11"
+dependencies = [
+  "cryptography>=42.0",
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.9",
+  "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

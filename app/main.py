@@ -1,0 +1,442 @@
+from __future__ import annotations
+
+import asyncio
+import hmac
+import json
+import secrets
+import time
+import logging
+from collections import defaultdict, deque
+from contextlib import asynccontextmanager
+from dataclasses import asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
+
+from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
+from app.config import settings
+from app.db import connection, init_db, now_iso, rows, seed_demo
+from app.marketplaces import analyze_listings, market_crawler
+from app.pricing import decide_reprice, recommend_price
+
+BASE = Path(__file__).resolve().parent
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db()
+    if settings.demo_mode:
+        seed_demo()
+    yield
+
+
+app = FastAPI(title="قیمت‌یار", version="0.2.0", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
+templates = Jinja2Templates(directory=BASE / "templates")
+
+
+class PolicyInput(BaseModel):
+    enabled: bool
+    floor_price: int = Field(gt=0)
+    objective: str = Field(pattern="^(fast|balanced|margin)$")
+    interval_days: int = Field(ge=1, le=30)
+    max_drop_percent: float = Field(gt=0, le=20)
+
+
+class MarketSearchInput(BaseModel):
+    product_name: str = Field(min_length=2, max_length=160)
+
+
+class SearchRateLimiter:
+    def __init__(self, limit: int = 20, window_seconds: int = 60) -> None:
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self.requests: dict[str, deque[float]] = defaultdict(deque)
+        self.lock = asyncio.Lock()
+
+    async def allow(self, client_id: str) -> bool:
+        now = time.monotonic()
+        async with self.lock:
+            bucket = self.requests[client_id]
+            while bucket and bucket[0] <= now - self.window_seconds:
+                bucket.popleft()
+            if len(bucket) >= self.limit:
+                return False
+            bucket.append(now)
+            return True
+
+
+search_rate_limiter = SearchRateLimiter()
+
+
+@app.get("/", response_class=HTMLResponse)
+def index(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"demo_mode": settings.demo_mode},
+    )
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "mode": "demo" if settings.demo_mode else "live"}
+
+
+@app.post("/api/market/analyze")
+async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[str, Any]:
+    client_id = request.client.host if request.client else "unknown"
+    if not await search_rate_limiter.allow(client_id):
+        raise HTTPException(
+            429,
+            "تعداد جست‌وجوها بیش از حد مجاز است؛ یک دقیقه دیگر دوباره تلاش کنید.",
+            headers={"Retry-After": "60"},
+        )
+    query = " ".join(payload.product_name.split())
+    try:
+        crawl = await market_crawler.search(query)
+    except Exception as exc:
+        logger.exception("Marketplace crawler initialization failed")
+        raise HTTPException(
+            502,
+            "اتصال خروجی سرور به بازارها برقرار نشد؛ تنظیمات شبکه یا پراکسی را بررسی کنید.",
+        ) from exc
+    statuses = [asdict(status) for status in crawl["sources"]]
+    if not any(status["ok"] for status in statuses):
+        raise HTTPException(502, "هیچ‌کدام از بازارها در دسترس نبودند؛ کمی بعد دوباره تلاش کنید.")
+    try:
+        analysis = analyze_listings(crawl["listings"])
+    except ValueError as exc:
+        raise HTTPException(
+            422,
+            {
+                "message": str(exc),
+                "sources": statuses,
+                "raw_count": crawl["raw_count"],
+            },
+        ) from exc
+    return {
+        "query": query,
+        "analysis": analysis,
+        "sources": statuses,
+        "raw_count": crawl["raw_count"],
+        "disclaimer": "این بازه از قیمت‌های فعلی فروش ساخته شده، نه تراکنش‌های قطعی‌شده.",
+    }
+
+
+@app.get("/auth/basalam")
+def connect_basalam() -> RedirectResponse:
+    if not settings.client_id or not settings.client_secret:
+        raise HTTPException(503, "Basalam OAuth credentials are not configured.")
+    state = secrets.token_urlsafe(32)
+    response = RedirectResponse(basalam.authorization_url(state))
+    response.set_cookie(
+        "oauth_state",
+        state,
+        max_age=600,
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/auth/basalam/callback")
+async def auth_callback(request: Request, code: str, state: str) -> RedirectResponse:
+    expected = request.cookies.get("oauth_state", "")
+    if not expected or not hmac.compare_digest(expected, state):
+        raise HTTPException(400, "Invalid OAuth state.")
+    try:
+        token_data = await basalam.exchange_code(code)
+        access = token_data["access_token"]
+        user = await basalam.me(access)
+        vendor = user.get("vendor") or {}
+        if not vendor.get("id"):
+            raise HTTPException(400, "This Basalam account has no vendor booth.")
+        with connection() as db:
+            db.execute(
+                """INSERT INTO accounts
+                (user_id,vendor_id,vendor_title,access_token,refresh_token,connected_at)
+                VALUES (?,?,?,?,?,?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                  vendor_id=excluded.vendor_id, vendor_title=excluded.vendor_title,
+                  access_token=excluded.access_token, refresh_token=excluded.refresh_token,
+                  connected_at=excluded.connected_at""",
+                (
+                    user["id"],
+                    vendor["id"],
+                    vendor.get("title", "غرفه باسلام"),
+                    encrypt_token(access),
+                    encrypt_token(token_data["refresh_token"]) if token_data.get("refresh_token") else None,
+                    now_iso(),
+                ),
+            )
+    except (BasalamError, KeyError) as exc:
+        raise HTTPException(502, str(exc)) from exc
+    response = RedirectResponse("/?connected=1")
+    response.delete_cookie("oauth_state")
+    return response
+
+
+def _product_payload(product: dict[str, Any]) -> dict[str, Any]:
+    prices = json.loads(product.pop("comparable_prices", "[]"))
+    band = recommend_price(
+        product["price"],
+        prices,
+        views=product["views"],
+        sales=product["sales"],
+        objective=product.get("objective") or "balanced",
+    )
+    product["enabled"] = bool(product.get("enabled"))
+    product["recommendation"] = band.__dict__
+    return product
+
+
+@app.get("/api/dashboard")
+def dashboard() -> dict[str, Any]:
+    products = rows(
+        """SELECT p.*, po.enabled, po.floor_price, po.objective,
+        po.interval_days, po.max_drop_percent, po.last_changed_at
+        FROM products p LEFT JOIN policies po ON po.product_id=p.id
+        ORDER BY p.stock > 0 DESC, p.views DESC"""
+    )
+    history = rows("SELECT * FROM price_history ORDER BY created_at DESC LIMIT 8")
+    active = sum(1 for p in products if p.get("enabled"))
+    opportunity = sum(
+        max(0, _product_payload(dict(p))["recommendation"]["suggested"] - p["price"])
+        * min(p["stock"], 10)
+        for p in products
+    )
+    return {
+        "vendor": {"title": "غرفه نمونه قیمت‌یار" if settings.demo_mode else "غرفه متصل"},
+        "mode": "demo" if settings.demo_mode else "live",
+        "metrics": {
+            "products": len(products),
+            "active_policies": active,
+            "opportunity": opportunity,
+            "changes_30d": len(history),
+        },
+        "products": [_product_payload(dict(p)) for p in products],
+        "history": history,
+    }
+
+
+@app.post("/api/products/{product_id}/policy")
+def save_policy(product_id: int, payload: PolicyInput) -> dict[str, Any]:
+    with connection() as db:
+        product = db.execute("SELECT price FROM products WHERE id=?", (product_id,)).fetchone()
+        if not product:
+            raise HTTPException(404, "Product not found.")
+        if payload.floor_price > product["price"]:
+            raise HTTPException(422, "Floor price cannot exceed the current price.")
+        db.execute(
+            """INSERT INTO policies
+            (product_id,enabled,floor_price,objective,interval_days,max_drop_percent,last_changed_at)
+            VALUES (?,?,?,?,?,?,?)
+            ON CONFLICT(product_id) DO UPDATE SET enabled=excluded.enabled,
+              floor_price=excluded.floor_price, objective=excluded.objective,
+              interval_days=excluded.interval_days,
+              max_drop_percent=excluded.max_drop_percent""",
+            (
+                product_id,
+                int(payload.enabled),
+                payload.floor_price,
+                payload.objective,
+                payload.interval_days,
+                payload.max_drop_percent,
+                now_iso(),
+            ),
+        )
+    return {"ok": True}
+
+
+@app.post("/api/products/{product_id}/apply")
+async def apply_recommendation(product_id: int) -> dict[str, Any]:
+    with connection() as db:
+        row = db.execute(
+            """SELECT p.*, po.objective FROM products p
+            LEFT JOIN policies po ON po.product_id=p.id WHERE p.id=?""",
+            (product_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Product not found.")
+        product = dict(row)
+        band = recommend_price(
+            product["price"],
+            json.loads(product["comparable_prices"]),
+            views=product["views"],
+            sales=product["sales"],
+            objective=product.get("objective") or "balanced",
+        )
+        if band.suggested == product["price"]:
+            return {"ok": True, "changed": False, "price": product["price"]}
+        if not settings.demo_mode:
+            account = db.execute("SELECT access_token FROM accounts LIMIT 1").fetchone()
+            if not account:
+                raise HTTPException(409, "Connect a Basalam booth first.")
+            try:
+                await basalam.update_price(
+                    decrypt_token(account["access_token"]),
+                    product_id,
+                    band.suggested,
+                )
+            except BasalamError as exc:
+                raise HTTPException(502, str(exc)) from exc
+        db.execute("UPDATE products SET price=? WHERE id=?", (band.suggested, product_id))
+        db.execute(
+            """INSERT INTO price_history(product_id,old_price,new_price,reason,created_at)
+            VALUES (?,?,?,?,?)""",
+            (product_id, product["price"], band.suggested, band.reason, now_iso()),
+        )
+    return {"ok": True, "changed": True, "price": band.suggested}
+
+
+@app.post("/api/sync")
+async def sync_products() -> dict[str, Any]:
+    if settings.demo_mode:
+        return {"ok": True, "synced": len(rows("SELECT id FROM products")), "demo": True}
+    with connection() as db:
+        account = db.execute("SELECT * FROM accounts LIMIT 1").fetchone()
+        if not account:
+            raise HTTPException(409, "Connect a Basalam booth first.")
+        try:
+            remote = await basalam.products(
+                decrypt_token(account["access_token"]),
+                account["vendor_id"],
+            )
+        except BasalamError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        token = decrypt_token(account["access_token"])
+        semaphore = asyncio.Semaphore(5)
+
+        async def comparable_prices(item: dict[str, Any]) -> list[int]:
+            async with semaphore:
+                try:
+                    matches = await basalam.search_comparables(
+                        token,
+                        item.get("title") or item.get("name", ""),
+                    )
+                except BasalamError:
+                    return []
+            prices = []
+            for match in matches:
+                if match.get("id") == item.get("id"):
+                    continue
+                price = match.get("price") or match.get("primaryPrice") or match.get("primary_price")
+                if price:
+                    prices.append(int(price))
+            return prices
+
+        market_prices = await asyncio.gather(*(comparable_prices(item) for item in remote))
+        for item, comparables in zip(remote, market_prices, strict=True):
+            photo = item.get("photo") or {}
+            db.execute(
+                """INSERT INTO products
+                (id,vendor_id,title,price,stock,views,sales,image_url,comparable_prices,synced_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET title=excluded.title,price=excluded.price,
+                  stock=excluded.stock,views=excluded.views,sales=excluded.sales,
+                  image_url=excluded.image_url,comparable_prices=excluded.comparable_prices,
+                  synced_at=excluded.synced_at""",
+                (
+                    item["id"],
+                    account["vendor_id"],
+                    item.get("title") or item.get("name", "بدون نام"),
+                    int(item.get("price") or item.get("primary_price") or 0),
+                    int(item.get("inventory") or item.get("stock") or 0),
+                    int(item.get("view_count") or item.get("views") or 0),
+                    int(item.get("sales_count") or item.get("sales") or 0),
+                    photo.get("md") if isinstance(photo, dict) else "",
+                    json.dumps(comparables),
+                    now_iso(),
+                ),
+            )
+    return {"ok": True, "synced": len(remote)}
+
+
+@app.post("/internal/reprice")
+async def scheduled_reprice(x_cron_secret: str = Header(default="")) -> dict[str, Any]:
+    if not settings.cron_secret or not hmac.compare_digest(x_cron_secret, settings.cron_secret):
+        raise HTTPException(401, "Invalid scheduler secret.")
+    changed: list[dict[str, int]] = []
+    candidates = rows(
+        """SELECT p.*,po.* FROM products p JOIN policies po ON po.product_id=p.id
+        WHERE po.enabled=1 AND p.stock>0"""
+    )
+    for item in candidates:
+        band = recommend_price(
+            item["price"],
+            json.loads(item["comparable_prices"]),
+            views=item["views"],
+            sales=item["sales"],
+            objective=item["objective"],
+        )
+        last = datetime.fromisoformat(item["last_changed_at"]) if item["last_changed_at"] else datetime.min.replace(tzinfo=timezone.utc)
+        days = (datetime.now(timezone.utc) - last).days
+        decision = decide_reprice(
+            current_price=item["price"],
+            suggested_price=band.suggested,
+            floor_price=item["floor_price"],
+            days_since_change=days,
+            interval_days=item["interval_days"],
+            max_drop_percent=item["max_drop_percent"],
+        )
+        if decision.should_change:
+            # In live mode, changes still flow through the same reviewed adapter.
+            if not settings.demo_mode:
+                with connection() as db:
+                    account = db.execute("SELECT access_token FROM accounts LIMIT 1").fetchone()
+                if not account:
+                    continue
+                await basalam.update_price(decrypt_token(account["access_token"]), item["id"], decision.new_price)
+            with connection() as db:
+                db.execute("UPDATE products SET price=? WHERE id=?", (decision.new_price, item["id"]))
+                db.execute("UPDATE policies SET last_changed_at=? WHERE product_id=?", (now_iso(), item["id"]))
+                db.execute(
+                    "INSERT INTO price_history(product_id,old_price,new_price,reason,created_at) VALUES(?,?,?,?,?)",
+                    (item["id"], item["price"], decision.new_price, decision.reason, now_iso()),
+                )
+            changed.append({"product_id": item["id"], "new_price": decision.new_price})
+    return {"ok": True, "changed": changed}
+
+
+@app.post("/webhooks/subscription")
+async def subscription_webhook(
+    request: Request,
+    x_webhook_secret: str = Header(default=""),
+) -> dict[str, bool]:
+    if not settings.webhook_secret or not hmac.compare_digest(x_webhook_secret, settings.webhook_secret):
+        raise HTTPException(401, "Invalid webhook secret.")
+    payload = await request.json()
+    event = payload.get("event_type", "")
+    if event not in {"subscription.created", "subscription.renewed", "subscription.cancelled"}:
+        return {"ok": True}
+    data = payload.get("data") or {}
+    customer_id = payload.get("customer_id") or (data.get("customer") or {}).get("id")
+    plan = data.get("plan") or {}
+    if not customer_id or not plan.get("id"):
+        raise HTTPException(422, "Incomplete subscription payload.")
+    with connection() as db:
+        db.execute(
+            """INSERT INTO subscriptions(customer_id,subscription_id,plan_id,status,period_end,updated_at)
+            VALUES(?,?,?,?,?,?)
+            ON CONFLICT(customer_id) DO UPDATE SET subscription_id=excluded.subscription_id,
+              plan_id=excluded.plan_id,status=excluded.status,period_end=excluded.period_end,
+              updated_at=excluded.updated_at""",
+            (
+                customer_id,
+                payload.get("subscription_id") or data.get("id"),
+                plan["id"],
+                (data.get("status") or {}).get("slug", "cancelled" if event.endswith("cancelled") else "active"),
+                data.get("current_period_end"),
+                now_iso(),
+            ),
+        )
+    return {"ok": True}

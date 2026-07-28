@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>قیمت‌یار — قیمت مناسب محصولت را پیدا کن</title>
+  <meta name="description" content="مقایسه قیمت محصول در ترب، دیجی‌کالا و باسلام و پیشنهاد بازه مناسب فروش">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">
+      <span class="brand-mark">
+        <svg viewBox="0 0 36 36" aria-hidden="true"><path d="M7 26V15m11 11V8m11 18V12"/><path d="m4 12 8-6 7 4 12-7"/></svg>
+      </span>
+      <span><strong>قیمت‌یار</strong><small>قیمت‌گذاری با داده واقعی بازار</small></span>
+    </a>
+    <a class="method-link" href="#method">روش محاسبه</a>
+  </header>
+
+  <main>
+    <section id="search-view" class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">ترب + دیجی‌کالا + باسلام</span>
+        <h1>محصولت را چند بفروشی؟</h1>
+        <p>نام دقیق محصول را بنویس؛ قیمت‌های مشابه را پیدا می‌کنیم و یک بازه مناسب فروش پیشنهاد می‌دهیم.</p>
+      </div>
+
+      <form id="search-form" class="search-box">
+        <label for="product-name">نام محصول</label>
+        <div class="search-control">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input
+            id="product-name"
+            name="product_name"
+            type="text"
+            minlength="2"
+            maxlength="160"
+            autocomplete="off"
+            placeholder="مثلاً گوشی سامسونگ A55 ظرفیت 256 گیگ"
+            required
+          >
+          <button type="submit">محاسبه قیمت</button>
+        </div>
+        <div class="examples">
+          <span>نمونه:</span>
+          <button type="button" data-example="عسل طبیعی آویشن ۹۰۰ گرم">عسل آویشن ۹۰۰ گرم</button>
+          <button type="button" data-example="گوشی سامسونگ A55 ظرفیت 256 گیگ">سامسونگ A55 256GB</button>
+          <button type="button" data-example="هدفون بی سیم انکر Soundcore Q30">هدفون Anker Q30</button>
+        </div>
+      </form>
+
+      <div class="trust-row" aria-label="منابع قیمت">
+        <div><span class="source-logo torob">ت</span><strong>ترب</strong><small>مقایسه فروشگاه‌ها</small></div>
+        <i></i>
+        <div><span class="source-logo digikala">د</span><strong>دیجی‌کالا</strong><small>قیمت خرده‌فروشی</small></div>
+        <i></i>
+        <div><span class="source-logo basalam">ب</span><strong>باسلام</strong><small>بازار محصولات ایرانی</small></div>
+      </div>
+
+      <section id="method" class="method-note">
+        <div class="method-graph" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div>
+          <strong>پیشنهاد شفاف</strong>
+          <p>نتایج نامرتبط و قیمت‌های پرت حذف می‌شوند؛ سپس چارک ۲۵، میانه و چارک ۷۵ به‌ترتیب برای فروش سریع، قیمت منصفانه و فروش صبورانه استفاده می‌شوند.</p>
+        </div>
+      </section>
+    </section>
+
+    <section id="loading-view" class="loading-view" hidden>
+      <div class="scanner"><span></span></div>
+      <h2>در حال بررسی بازار…</h2>
+      <p id="loading-product"></p>
+      <div class="loading-sources">
+        <span>ترب</span><span>دیجی‌کالا</span><span>باسلام</span>
+      </div>
+    </section>
+
+    <section id="result-view" class="result-view" hidden>
+      <div class="result-head">
+        <div>
+          <span class="eyebrow">تحلیل بازار</span>
+          <h1 id="result-title"></h1>
+        </div>
+        <button id="new-search" class="ghost-button">جست‌وجوی جدید</button>
+      </div>
+
+      <div class="pricing-card">
+        <div class="selected-price">
+          <small>قیمت انتخابی شما</small>
+          <div><strong id="selected-price">—</strong><span>تومان</span></div>
+        </div>
+
+        <div id="sale-signal" class="sale-signal fair">
+          <span id="signal-title">قیمت منصفانه</span>
+          <p id="signal-copy">در مرکز قیمت‌های مشابه بازار قرار دارید.</p>
+        </div>
+
+        <div class="price-slider">
+          <div class="slider-labels">
+            <span>فروش سریع</span>
+            <span>قیمت منصفانه</span>
+            <span>فروش صبورانه</span>
+          </div>
+          <input id="price-slider" type="range">
+          <div class="slider-prices">
+            <span id="low-label">—</span>
+            <span id="fair-label">—</span>
+            <span id="high-label">—</span>
+          </div>
+        </div>
+
+        <div class="recommendation">
+          <div>
+            <small>پیشنهاد قیمت‌یار</small>
+            <strong id="recommended-price">—</strong>
+            <span>تومان</span>
+          </div>
+          <button id="use-recommended">انتخاب قیمت پیشنهادی</button>
+        </div>
+      </div>
+
+      <div class="summary-grid">
+        <article>
+          <span class="summary-icon">◎</span>
+          <div><small>بازه پیشنهادی</small><strong id="market-range">—</strong></div>
+        </article>
+        <article>
+          <span class="summary-icon">◇</span>
+          <div><small>نمونه معتبر</small><strong id="sample-size">—</strong></div>
+        </article>
+        <article>
+          <span class="summary-icon">✓</span>
+          <div><small>اطمینان تحلیل</small><strong id="confidence">—</strong></div>
+        </article>
+      </div>
+
+      <section class="matches">
+        <div class="section-head">
+          <div>
+            <h2>محصولات مشابه پیدا شده</h2>
+            <p id="source-summary"></p>
+          </div>
+          <button id="toggle-listings" class="text-button">نمایش همه</button>
+        </div>
+        <div id="listings" class="listing-grid"></div>
+      </section>
+
+      <p class="disclaimer">
+        این پیشنهاد از قیمت‌های فعلی فروش ساخته شده است، نه قیمت معاملات قطعی. مدل، وزن، ظرفیت، اصالت و وضعیت کالا را در تصمیم نهایی بررسی کنید.
+      </p>
+    </section>
+
+    <section id="error-view" class="error-view" hidden>
+      <span>!</span>
+      <h2>نتیجه کافی پیدا نشد</h2>
+      <p id="error-message"></p>
+      <button id="retry-button">اصلاح نام محصول</button>
+    </section>
+  </main>
+
+  <footer>
+    <span>قیمت‌یار</span>
+    <p>راهنمای قیمت‌گذاری؛ تصمیم نهایی همیشه با فروشنده است.</p>
+  </footer>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
