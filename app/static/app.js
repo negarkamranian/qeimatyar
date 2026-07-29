@@ -36,23 +36,53 @@ function percentageFor(value, low, high) {
   return Math.min(100, Math.max(0, ((value - low) / (high - low)) * 100));
 }
 
-function midpointPercentage(first, second, low, high) {
-  return percentageFor((first + second) / 2, low, high);
-}
-
 function sliderBands(analysis) {
-  const low = Number(analysis.range.low);
-  const high = Number(analysis.range.high);
+  const scale = analysis.scale || analysis.range;
+  const low = Number(scale.low);
+  const high = Number(scale.high);
   const quick = Number(analysis.positions.quick);
   const fair = Number(analysis.positions.fair);
   const patient = Number(analysis.positions.patient);
-  const quickStop = midpointPercentage(quick, fair, low, high);
-  const patientStart = midpointPercentage(fair, patient, low, high);
+  const quickStop = percentageFor(quick, low, high);
+  const patientStart = percentageFor(patient, low, high);
   return {
     quickStop,
     patientStart: Math.max(quickStop, patientStart),
     fairPosition: percentageFor(fair, low, high),
   };
+}
+
+function markerRows(markers) {
+  const minGap = window.matchMedia("(max-width: 560px)").matches ? 24 : 15;
+  const rowEnds = [];
+  const rows = {};
+
+  markers.forEach(marker => {
+    let row = rowEnds.findIndex(end => marker.position - end >= minGap);
+    if (row === -1) {
+      row = rowEnds.length;
+      rowEnds.push(marker.position);
+    } else {
+      rowEnds[row] = marker.position;
+    }
+    rows[marker.name] = row;
+  });
+
+  return { ...rows, count: rowEnds.length };
+}
+
+function applySliderMarkerLayout() {
+  if (!currentSliderBands) return;
+  const priceSlider = document.querySelector(".price-slider");
+  const rows = markerRows([
+    { name: "quick", position: currentSliderBands.quickStop },
+    { name: "patient", position: currentSliderBands.patientStart },
+  ]);
+  priceSlider.style.setProperty("--quick-position", `${currentSliderBands.quickStop}%`);
+  priceSlider.style.setProperty("--patient-position", `${currentSliderBands.patientStart}%`);
+  priceSlider.style.setProperty("--quick-offset", `${rows.quick * 16}px`);
+  priceSlider.style.setProperty("--patient-offset", `${rows.patient * 16}px`);
+  priceSlider.style.setProperty("--marker-rows", rows.count);
 }
 
 async function analyze(productName) {
@@ -86,8 +116,8 @@ function renderResult(data) {
   currentAnalysis = analysis;
   document.querySelector("#result-title").textContent = data.query;
   document.querySelector("#recommended-price").textContent = toman(analysis.recommended);
+  const scale = analysis.scale || analysis.range;
   document.querySelector("#low-label").textContent = toman(analysis.positions.quick);
-  document.querySelector("#fair-label").textContent = toman(analysis.positions.fair);
   document.querySelector("#high-label").textContent = toman(analysis.positions.patient);
   document.querySelector("#market-range").textContent =
     `${toman(analysis.range.low)} تا ${toman(analysis.range.high)} تومان`;
@@ -95,14 +125,14 @@ function renderResult(data) {
   document.querySelector("#confidence").textContent = `${fa(analysis.confidence)}٪`;
 
   const slider = document.querySelector("#price-slider");
-  const spread = Math.max(analysis.range.high - analysis.range.low, 2_000);
+  const spread = Math.max(scale.high - scale.low, 2_000);
   const step = spread < 1_000_000 ? 1_000 : 10_000;
   currentSliderBands = sliderBands(analysis);
   slider.style.setProperty("--quick-stop", `${currentSliderBands.quickStop}%`);
   slider.style.setProperty("--patient-start", `${currentSliderBands.patientStart}%`);
-  document.querySelector(".price-slider").style.setProperty("--fair-position", `${currentSliderBands.fairPosition}%`);
-  slider.min = analysis.range.low;
-  slider.max = analysis.range.high;
+  applySliderMarkerLayout();
+  slider.min = scale.low;
+  slider.max = scale.high;
   slider.step = step;
   slider.value = analysis.recommended;
   updateSelectedPrice();
@@ -142,6 +172,7 @@ function updateSelectedPrice() {
   const high = Number(slider.max);
   const position = percentageFor(value, low, high);
   const signal = document.querySelector("#sale-signal");
+  signal.style.setProperty("--signal-position", `${position}%`);
   document.querySelector("#selected-price").textContent = toman(value);
 
   signal.classList.remove("quick", "fair", "patient");
@@ -198,6 +229,7 @@ document.querySelector("#toggle-listings").addEventListener("click", event => {
   grid.classList.toggle("expanded");
   event.currentTarget.textContent = grid.classList.contains("expanded") ? "نمایش کمتر" : "نمایش همه";
 });
+window.addEventListener("resize", applySliderMarkerLayout);
 
 const initialQuery = new URLSearchParams(window.location.search).get("q");
 if (initialQuery && initialQuery.trim().length >= 2) {

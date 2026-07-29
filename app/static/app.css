@@ -155,18 +155,26 @@ h1, h2, p { margin-top: 0; }
 .selected-price div { display: flex; align-items: baseline; gap: 7px; direction: rtl; }
 .selected-price strong { font-size: 42px; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .selected-price span { color: var(--muted); font-size: 11px; }
-.sale-signal { color: white; margin: 0 28px; padding: 13px 16px; display: flex; align-items: center; gap: 18px; border-radius: 6px; transition: background .2s; }
+.sale-signal { --signal-position: 50%; position: relative; left: clamp(86px, var(--signal-position), calc(100% - 86px)); transform: translateX(-50%); width: max-content; max-width: min(220px, 74vw); color: white; margin: 0 0 12px; padding: 9px 12px; display: block; direction: rtl; text-align: center; border-radius: 6px; transition: background .2s, left .16s ease; }
 .sale-signal.quick { background: var(--blue); }.sale-signal.fair { background: var(--teal); }.sale-signal.patient { background: var(--red); }
-.sale-signal span { font-weight: 800; font-size: 12px; padding-left: 17px; border-left: 1px solid rgba(255,255,255,.4); }
-.sale-signal p { font-size: 10px; margin: 0; opacity: .92; }
-.price-slider { --fair-position: 50%; padding: 30px 28px 26px; direction: ltr; }
-.slider-labels, .slider-prices { position: relative; height: 16px; }
-.slider-labels span, .slider-prices span { position: absolute; white-space: nowrap; }
-.slider-labels span:first-child, .slider-prices span:first-child { left: 0; }
-.slider-labels span:nth-child(2), .slider-prices span:nth-child(2) { left: var(--fair-position); transform: translateX(-50%); }
-.slider-labels span:last-child, .slider-prices span:last-child { right: 0; }
-.slider-labels { direction: ltr; font-size: 9px; font-weight: 700; color: var(--muted); margin-bottom: 9px; }
-.slider-labels span:first-child { color: var(--blue); }.slider-labels span:nth-child(2) { color: var(--teal); }.slider-labels span:last-child { color: var(--red); }
+.sale-signal::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 12px; height: 12px; background: inherit; transform: translateX(-50%) rotate(45deg); border-radius: 2px; }
+.sale-signal span { display: block; font-weight: 800; font-size: 11px; line-height: 1.45; }
+.sale-signal p { font-size: 9px; line-height: 1.55; margin: 1px 0 0; opacity: .92; }
+.price-slider {
+  --quick-position: 0%;
+  --patient-position: 100%;
+  --quick-offset: 0px;
+  --patient-offset: 0px;
+  --marker-rows: 1;
+  --marker-line: 16px;
+  padding: 30px 28px 26px;
+  direction: ltr;
+}
+.slider-track-wrap { padding-top: 3px; }
+.slider-prices { position: relative; height: calc(var(--marker-rows) * var(--marker-line)); color: var(--muted); font-size: 9px; margin-top: 11px; font-variant-numeric: tabular-nums; }
+.slider-prices span { position: absolute; white-space: nowrap; }
+.slider-prices span:first-child { left: var(--quick-position); top: var(--quick-offset); transform: translateX(-50%); }
+.slider-prices span:last-child { left: var(--patient-position); top: var(--patient-offset); transform: translateX(-50%); }
 #price-slider {
   --quick-stop: 33%;
   --patient-start: 67%;
@@ -181,7 +189,6 @@ h1, h2, p { margin-top: 0; }
 }
 #price-slider::-webkit-slider-thumb { appearance: none; width: 23px; height: 23px; border: 4px solid white; border-radius: 50%; background: var(--thumb, var(--teal)); box-shadow: 0 0 0 2px var(--thumb, var(--teal)), 0 3px 8px rgba(0,0,0,.18); cursor: grab; }
 #price-slider::-moz-range-thumb { width: 16px; height: 16px; border: 4px solid white; border-radius: 50%; background: var(--thumb, var(--teal)); box-shadow: 0 0 0 2px var(--thumb, var(--teal)); cursor: grab; }
-.slider-prices { color: var(--muted); font-size: 9px; margin-top: 11px; font-variant-numeric: tabular-nums; }
 .recommendation { border-top: 1px solid var(--line); background: #fbfcfb; padding: 17px 28px; display: flex; align-items: center; justify-content: space-between; }
 .recommendation small { display: block; color: var(--muted); font-size: 9px; }
 .recommendation strong { color: var(--green); font-size: 19px; }

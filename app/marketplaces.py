@@ -328,6 +328,8 @@ def analyze_listings(listings: list[MarketListing]) -> dict[str, Any]:
 
     retained.sort(key=lambda item: item.price)
     prices = [item.price for item in retained]
+    scale_low = _round_toman(float(prices[0]))
+    scale_high = _round_toman(float(prices[-1]))
     quick = _round_toman(_percentile(prices, 0.25))
     fair = _round_toman(float(median(prices)))
     patient = _round_toman(_percentile(prices, 0.75))
@@ -344,6 +346,7 @@ def analyze_listings(listings: list[MarketListing]) -> dict[str, Any]:
     }
     return {
         "range": {"low": quick, "high": patient},
+        "scale": {"low": scale_low, "high": scale_high},
         "recommended": fair,
         "positions": {
             "quick": quick,

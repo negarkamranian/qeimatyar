@@ -94,6 +94,7 @@ def test_market_analysis_removes_extreme_outlier():
     ]
     analysis = analyze_listings(listings)
     assert analysis["range"]["high"] < 1_000_000
+    assert analysis["scale"] == {"low": 440_000, "high": 540_000}
     assert analysis["recommended"] == 490_000
     assert analysis["excluded_count"] == 1
     assert analysis["source_counts"]["basalam"] == 2
