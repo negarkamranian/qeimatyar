@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
 from app.config import settings
+from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
 from app.marketplaces import (
     analyze_listings,
@@ -652,6 +653,17 @@ async def scheduled_merchant_sync(
         raise HTTPException(401, "Invalid scheduler secret.")
     results = await merchant_sync.sync_due_users()
     return {"ok": True, "accounts": len(results), "results": results}
+
+
+@app.post("/internal/usdt-rate-check")
+async def scheduled_usdt_rate_check(
+    x_cron_secret: str = Header(default=""),
+) -> dict[str, Any]:
+    if not settings.cron_secret or not hmac.compare_digest(
+        x_cron_secret, settings.cron_secret
+    ):
+        raise HTTPException(401, "Invalid scheduler secret.")
+    return await check_usdt_rate_change()
 
 
 def _product_payload(product: dict[str, Any]) -> dict[str, Any]:

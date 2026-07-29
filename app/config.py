@@ -30,6 +30,8 @@ class Settings:
     marketplace_trust_env: bool = _bool("MARKETPLACE_TRUST_ENV", False)
     merchant_product_limit: int = int(os.getenv("MERCHANT_PRODUCT_LIMIT", "50"))
     merchant_sync_hours: int = int(os.getenv("MERCHANT_SYNC_HOURS", "6"))
+    usdt_notification_enabled: bool = _bool("USDT_NOTIFICATION_ENABLED", True)
+    usdt_notification_percent: float = float(os.getenv("USDT_NOTIFICATION_PERCENT", "1"))
 
 
 settings = Settings()
