@@ -10,7 +10,7 @@ let currentSliderBands = null;
 const pageParams = new URLSearchParams(window.location.search);
 let merchantContext = {
   active: pageParams.get("from") === "merchant",
-  currentPrice: Number(pageParams.get("price")) || null,
+  currentPrice: null,
   productId: Number(pageParams.get("product_id")) || null,
 };
 
@@ -113,6 +113,9 @@ async function analyze(productName) {
       const detail = body.detail;
       const message = typeof detail === "object" ? detail.message : detail;
       throw new Error(message || "ارتباط با بازارها ناموفق بود.");
+    }
+    if (merchantContext.active && body.merchant_product) {
+      merchantContext.currentPrice = Number(body.merchant_product.current_price) || null;
     }
     renderResult(body);
     showView("result");

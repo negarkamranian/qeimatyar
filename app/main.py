@@ -160,6 +160,20 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         query, resolved_from_url = await resolve_product_query(payload.product_name)
     except ProductLinkError as exc:
         raise HTTPException(422, str(exc)) from exc
+    excluded_product_id = (
+        payload.exclude_basalam_product_id
+        or basalam_product_id_from_url(payload.product_name)
+    )
+    merchant_product = None
+    merchant_user_id = read_session(request.cookies.get(COOKIE_NAME))
+    if merchant_user_id and payload.exclude_basalam_product_id:
+        merchant_rows = rows(
+            """SELECT product_id,title,current_price FROM merchant_products
+            WHERE user_id=? AND product_id=?""",
+            (merchant_user_id, payload.exclude_basalam_product_id),
+        )
+        if merchant_rows:
+            merchant_product = merchant_rows[0]
     try:
         crawl = await market_crawler.search(query)
     except Exception as exc:
@@ -173,10 +187,6 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         raise HTTPException(502, "هیچ‌کدام از بازارها در دسترس نبودند؛ کمی بعد دوباره تلاش کنید.")
     try:
         listings = crawl["listings"]
-        excluded_product_id = (
-            payload.exclude_basalam_product_id
-            or basalam_product_id_from_url(payload.product_name)
-        )
         if excluded_product_id:
             listings = exclude_marketplace_product(
                 listings,
@@ -196,6 +206,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
     return {
         "query": query,
         "resolved_from_url": resolved_from_url,
+        "merchant_product": merchant_product,
         "analysis": analysis,
         "sources": statuses,
         "raw_count": crawl["raw_count"],

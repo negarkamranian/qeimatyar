@@ -42,7 +42,6 @@ function productAnalysisUrl(product) {
   const params = new URLSearchParams({
     q: product.title,
     from: "merchant",
-    price: String(product.current_price),
     product_id: String(product.product_id),
   });
   return `/?${params.toString()}`;

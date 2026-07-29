@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.basalam import encrypt_token
 from app.db import connection, init_db, now_iso
 from app.main import app
-from app.marketplaces import MarketListing
+from app.marketplaces import MarketListing, SourceStatus
 from app.merchant_sync import merchant_sync
 from app.sessions import COOKIE_NAME, create_session
 
@@ -141,5 +141,55 @@ def test_merchant_sync_reads_products_and_stores_estimate(monkeypatch):
         assert product["market_suggested"] == 500_000
         assert product["market_low"] == 475_000
         assert product["market_high"] == 525_000
+    finally:
+        _cleanup()
+
+
+def test_merchant_analysis_reads_current_price_server_side(monkeypatch):
+    _insert_accounts_and_products()
+
+    async def fake_market_search(_):
+        return {
+            "listings": [
+                MarketListing(
+                    "basalam",
+                    "محصول خود غرفه",
+                    900_000,
+                    "https://basalam.com/p/7001",
+                    similarity=1,
+                    external_id="7001",
+                ),
+                MarketListing("torob", "محصول تست", 450_000, "", similarity=1),
+                MarketListing("digikala", "محصول تست", 500_000, "", similarity=1),
+                MarketListing("basalam", "محصول مشابه", 550_000, "", similarity=1),
+            ],
+            "sources": [
+                SourceStatus("torob", True, 1),
+                SourceStatus("digikala", True, 1),
+                SourceStatus("basalam", True, 2),
+            ],
+            "raw_count": 4,
+        }
+
+    monkeypatch.setattr("app.main.market_crawler.search", fake_market_search)
+    try:
+        with TestClient(app) as client:
+            client.cookies.set(COOKIE_NAME, create_session(USER_ID))
+            response = client.post(
+                "/api/market/analyze",
+                json={
+                    "product_name": "محصول تست",
+                    "exclude_basalam_product_id": 7001,
+                },
+            )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["merchant_product"]["current_price"] == 500_000
+        assert body["analysis"]["recommended"] == 500_000
+        assert body["analysis"]["sample_size"] == 3
+        assert all(
+            listing["url"] != "https://basalam.com/p/7001"
+            for listing in body["analysis"]["listings"]
+        )
     finally:
         _cleanup()
