@@ -22,7 +22,7 @@ class Settings:
     )
     scopes: str = os.getenv(
         "BASALAM_SCOPES",
-        "vendor.profile.read vendor.product.read",
+        "customer.profile.read vendor.profile.read vendor.product.read",
     )
     webhook_secret: str = os.getenv("WEBHOOK_SECRET", "")
     cron_secret: str = os.getenv("CRON_SECRET", "")

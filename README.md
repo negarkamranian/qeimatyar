@@ -183,3 +183,10 @@ docker compose -f compose.production.yml logs app --since=15m | grep 'trace_id=D
 `https://qeimatyar.ir/auth/basalam/callback` بگذارید و همان آدرس را در پنل
 توسعه‌دهندگان باسلام نیز ثبت کنید. بعد از بالا آمدن نسخه جدید، `/login` را باز
 و اتصال را ابتدا با یک غرفه آزمایشی بررسی کنید.
+
+برای ورود غرفه‌دار و دریافت پروفایل و محصولات، scopeهای باسلام باید دقیقاً شامل
+موارد زیر باشند:
+
+```dotenv
+BASALAM_SCOPES=customer.profile.read vendor.profile.read vendor.product.read
+```

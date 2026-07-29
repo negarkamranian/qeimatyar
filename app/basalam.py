@@ -15,6 +15,12 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+REQUIRED_OAUTH_SCOPES = {
+    "customer.profile.read",
+    "vendor.profile.read",
+    "vendor.product.read",
+}
+
 
 class BasalamError(RuntimeError):
     def __init__(
@@ -53,6 +59,12 @@ class BasalamClient:
             raise ValueError(
                 "Basalam OAuth is read-only; remove these scopes: "
                 + ", ".join(unsafe_scopes)
+            )
+        missing_scopes = REQUIRED_OAUTH_SCOPES.difference(scopes)
+        if missing_scopes:
+            raise ValueError(
+                "Basalam OAuth is missing required scopes: "
+                + ", ".join(sorted(missing_scopes))
             )
         query = urlencode(
             {

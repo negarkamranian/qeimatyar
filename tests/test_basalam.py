@@ -14,13 +14,15 @@ def test_authorization_url_contains_only_configured_read_scopes(monkeypatch):
         "app.basalam.settings",
         SimpleNamespace(
             client_id="client-id",
-            scopes="vendor.profile.read vendor.product.read",
+            scopes="customer.profile.read vendor.profile.read vendor.product.read",
             redirect_uri="https://qeimatyar.ir/auth/basalam/callback",
         ),
     )
     url = BasalamClient().authorization_url("secure-state")
     query = parse_qs(urlparse(url).query)
-    assert query["scope"] == ["vendor.profile.read vendor.product.read"]
+    assert query["scope"] == [
+        "customer.profile.read vendor.profile.read vendor.product.read"
+    ]
     assert query["state"] == ["secure-state"]
 
 
@@ -29,11 +31,27 @@ def test_authorization_url_rejects_write_scope(monkeypatch):
         "app.basalam.settings",
         SimpleNamespace(
             client_id="client-id",
-            scopes="vendor.profile.read vendor.product.write",
+            scopes=(
+                "customer.profile.read vendor.profile.read "
+                "vendor.product.read vendor.product.write"
+            ),
             redirect_uri="https://qeimatyar.ir/auth/basalam/callback",
         ),
     )
     with pytest.raises(ValueError, match="vendor.product.write"):
+        BasalamClient().authorization_url("secure-state")
+
+
+def test_authorization_url_rejects_missing_customer_profile_scope(monkeypatch):
+    monkeypatch.setattr(
+        "app.basalam.settings",
+        SimpleNamespace(
+            client_id="client-id",
+            scopes="vendor.profile.read vendor.product.read",
+            redirect_uri="https://qeimatyar.ir/auth/basalam/callback",
+        ),
+    )
+    with pytest.raises(ValueError, match="customer.profile.read"):
         BasalamClient().authorization_url("secure-state")
 
 
