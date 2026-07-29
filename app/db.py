@@ -114,6 +114,13 @@ def init_db() -> None:
               ON merchant_notifications(user_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_merchant_notifications_user_unread
               ON merchant_notifications(user_id, read_at);
+            CREATE TABLE IF NOT EXISTS currency_rate_state (
+                symbol TEXT PRIMARY KEY,
+                last_price_toman INTEGER NOT NULL,
+                last_notified_price_toman INTEGER,
+                last_checked_at TEXT NOT NULL,
+                last_notified_at TEXT
+            );
             """
         )
         account_columns = {

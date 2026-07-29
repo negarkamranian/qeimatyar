@@ -15,17 +15,27 @@ async def run() -> None:
     interval = max(1, settings.merchant_sync_hours) * 60 * 60
     await asyncio.sleep(10)
     while True:
-        try:
-            # A batch can include several booths and many marketplace lookups.
-            async with httpx.AsyncClient(timeout=1800, trust_env=False) as client:
+        # A batch can include several booths and many marketplace lookups.
+        async with httpx.AsyncClient(timeout=1800, trust_env=False) as client:
+            try:
                 response = await client.post(
                     "http://app:8000/internal/merchant-sync",
                     headers={"X-Cron-Secret": settings.cron_secret},
                 )
                 response.raise_for_status()
                 logger.info("Merchant refresh completed: %s", response.text)
-        except Exception:
-            logger.exception("Scheduled merchant refresh failed")
+            except Exception:
+                logger.exception("Scheduled merchant refresh failed")
+
+            try:
+                response = await client.post(
+                    "http://app:8000/internal/usdt-rate-check",
+                    headers={"X-Cron-Secret": settings.cron_secret},
+                )
+                response.raise_for_status()
+                logger.info("USDT rate check completed: %s", response.text)
+            except Exception:
+                logger.exception("Scheduled USDT rate check failed")
         await asyncio.sleep(interval)
 
 
