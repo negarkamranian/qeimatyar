@@ -6,6 +6,7 @@ const views = {
 };
 const sourceNames = { torob: "ترب", digikala: "دیجی‌کالا", basalam: "باسلام" };
 let currentAnalysis = null;
+let currentSliderBands = null;
 
 const toman = value => new Intl.NumberFormat("fa-IR").format(Math.round(value || 0));
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
@@ -28,6 +29,30 @@ function safeUrl(value) {
 function showView(name) {
   Object.entries(views).forEach(([key, node]) => { node.hidden = key !== name; });
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function percentageFor(value, low, high) {
+  if (high <= low) return 50;
+  return Math.min(100, Math.max(0, ((value - low) / (high - low)) * 100));
+}
+
+function midpointPercentage(first, second, low, high) {
+  return percentageFor((first + second) / 2, low, high);
+}
+
+function sliderBands(analysis) {
+  const low = Number(analysis.range.low);
+  const high = Number(analysis.range.high);
+  const quick = Number(analysis.positions.quick);
+  const fair = Number(analysis.positions.fair);
+  const patient = Number(analysis.positions.patient);
+  const quickStop = midpointPercentage(quick, fair, low, high);
+  const patientStart = midpointPercentage(fair, patient, low, high);
+  return {
+    quickStop,
+    patientStart: Math.max(quickStop, patientStart),
+    fairPosition: percentageFor(fair, low, high),
+  };
 }
 
 async function analyze(productName) {
@@ -72,6 +97,10 @@ function renderResult(data) {
   const slider = document.querySelector("#price-slider");
   const spread = Math.max(analysis.range.high - analysis.range.low, 2_000);
   const step = spread < 1_000_000 ? 1_000 : 10_000;
+  currentSliderBands = sliderBands(analysis);
+  slider.style.setProperty("--quick-stop", `${currentSliderBands.quickStop}%`);
+  slider.style.setProperty("--patient-start", `${currentSliderBands.patientStart}%`);
+  document.querySelector(".price-slider").style.setProperty("--fair-position", `${currentSliderBands.fairPosition}%`);
   slider.min = analysis.range.low;
   slider.max = analysis.range.high;
   slider.step = step;
@@ -111,17 +140,17 @@ function updateSelectedPrice() {
   const value = Number(slider.value);
   const low = Number(slider.min);
   const high = Number(slider.max);
-  const position = high === low ? .5 : (value - low) / (high - low);
+  const position = percentageFor(value, low, high);
   const signal = document.querySelector("#sale-signal");
   document.querySelector("#selected-price").textContent = toman(value);
 
   signal.classList.remove("quick", "fair", "patient");
-  if (position < .34) {
+  if (currentSliderBands && position < currentSliderBands.quickStop) {
     signal.classList.add("quick");
     document.querySelector("#signal-title").textContent = "فروش سریع‌تر";
     document.querySelector("#signal-copy").textContent = "قیمت شما در بخش رقابتی بازار است و احتمال فروش سریع‌تر می‌شود.";
     slider.style.setProperty("--thumb", "var(--blue)");
-  } else if (position < .68) {
+  } else if (currentSliderBands && position <= currentSliderBands.patientStart) {
     signal.classList.add("fair");
     document.querySelector("#signal-title").textContent = "قیمت منصفانه";
     document.querySelector("#signal-copy").textContent = "در مرکز قیمت‌های مشابه بازار قرار دارید.";
