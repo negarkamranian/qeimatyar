@@ -182,7 +182,11 @@ def connect_basalam() -> RedirectResponse:
     if not settings.client_id or not settings.client_secret:
         raise HTTPException(503, "Basalam OAuth credentials are not configured.")
     state = secrets.token_urlsafe(32)
-    response = RedirectResponse(basalam.authorization_url(state))
+    try:
+        authorization_url = basalam.authorization_url(state)
+    except ValueError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    response = RedirectResponse(authorization_url)
     response.set_cookie(
         "oauth_state",
         state,
@@ -204,9 +208,11 @@ async def auth_callback(
     expected = request.cookies.get("oauth_state", "")
     if not expected or not hmac.compare_digest(expected, state):
         raise HTTPException(400, "Invalid OAuth state.")
+    oauth_stage = "token_exchange"
     try:
         token_data = await basalam.exchange_code(code)
         access = token_data["access_token"]
+        oauth_stage = "user_profile"
         user = await basalam.me(access)
         vendor = user.get("vendor") or {}
         if not vendor.get("id"):
@@ -237,6 +243,7 @@ async def auth_callback(
                 ),
             )
     except (BasalamError, KeyError) as exc:
+        logger.exception("Basalam OAuth callback failed stage=%s", oauth_stage)
         raise HTTPException(502, str(exc)) from exc
     background_tasks.add_task(merchant_sync.sync_user, int(user["id"]))
     response = RedirectResponse("/merchant")

@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from cryptography.fernet import Fernet
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class BasalamError(RuntimeError):
@@ -35,10 +38,17 @@ class BasalamClient:
     auth_base = "https://auth.basalam.com"
 
     def authorization_url(self, state: str) -> str:
+        scopes = settings.scopes.split()
+        unsafe_scopes = [scope for scope in scopes if not scope.endswith(".read")]
+        if unsafe_scopes:
+            raise ValueError(
+                "Basalam OAuth is read-only; remove these scopes: "
+                + ", ".join(unsafe_scopes)
+            )
         query = urlencode(
             {
                 "client_id": settings.client_id,
-                "scope": settings.scopes,
+                "scope": " ".join(scopes),
                 "redirect_uri": settings.redirect_uri,
                 "state": state,
             }
@@ -74,15 +84,30 @@ class BasalamClient:
         return await self._request("GET", f"{self.api_base}/users/me", token=token)
 
     async def products(self, token: str, vendor_id: int) -> list[dict[str, Any]]:
-        payload = await self._request(
-            "GET",
-            f"{self.api_base}/vendors/{vendor_id}/products",
-            token=token,
-            params={"per_page": 100},
-        )
-        if isinstance(payload, list):
-            return payload
-        return payload.get("data", [])
+        products: list[dict[str, Any]] = []
+        page = 1
+        total_pages = 1
+        while page <= total_pages:
+            payload = await self._request(
+                "GET",
+                f"{self.api_base}/vendors/{vendor_id}/products",
+                token=token,
+                params={"page": page, "per_page": 100},
+            )
+            if isinstance(payload, list):
+                products.extend(payload)
+                break
+            batch = payload.get("data") or []
+            products.extend(batch)
+            try:
+                # Defensive cap avoids an invalid API response causing an endless loop.
+                total_pages = min(max(1, int(payload.get("total_page") or 1)), 500)
+            except (TypeError, ValueError):
+                total_pages = 1
+            if not batch:
+                break
+            page += 1
+        return products
 
     async def update_price(self, token: str, product_id: int, price: int) -> dict[str, Any]:
         # Verified against basalam-sdk 1.2.0 CoreService.update_product.
@@ -127,9 +152,28 @@ class BasalamClient:
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as exc:
+            response = exc.response
+            error_detail: Any = None
+            try:
+                payload = response.json()
+                if isinstance(payload, dict):
+                    error_detail = {
+                        key: payload[key]
+                        for key in ("error", "error_description", "message", "detail")
+                        if key in payload
+                    }
+            except ValueError:
+                pass
+            logger.warning(
+                "Basalam API rejected request method=%s path=%s status=%s detail=%r",
+                method,
+                urlsplit(url).path,
+                response.status_code,
+                error_detail or "no structured error detail",
+            )
             raise BasalamError(
-                f"Basalam request failed: HTTP {exc.response.status_code}",
-                exc.response.status_code,
+                f"Basalam request failed: HTTP {response.status_code}",
+                response.status_code,
             ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise BasalamError(f"Basalam request failed: {exc}") from exc
