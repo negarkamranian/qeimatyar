@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import hashlib
 import json
 import secrets
 import time
@@ -182,14 +183,38 @@ def connect_basalam() -> RedirectResponse:
     if not settings.client_id or not settings.client_secret:
         raise HTTPException(503, "Basalam OAuth credentials are not configured.")
     state = secrets.token_urlsafe(32)
+    trace_id = secrets.token_hex(12)
+    started = time.perf_counter()
     try:
         authorization_url = basalam.authorization_url(state)
     except ValueError as exc:
+        logger.warning(
+            "oauth_authorization_failed trace_id=%s stage=authorization_url error=%s",
+            trace_id,
+            exc,
+        )
         raise HTTPException(503, str(exc)) from exc
+    logger.info(
+        "oauth_authorization_started trace_id=%s redirect_uri=%s scopes=%s "
+        "state_fingerprint=%s elapsed_ms=%s",
+        trace_id,
+        settings.redirect_uri,
+        settings.scopes.split(),
+        _fingerprint(state),
+        round((time.perf_counter() - started) * 1000),
+    )
     response = RedirectResponse(authorization_url)
     response.set_cookie(
         "oauth_state",
         state,
+        max_age=600,
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+    )
+    response.set_cookie(
+        "oauth_trace",
+        trace_id,
         max_age=600,
         httponly=True,
         secure=settings.app_env == "production",
@@ -202,21 +227,85 @@ def connect_basalam() -> RedirectResponse:
 async def auth_callback(
     request: Request,
     background_tasks: BackgroundTasks,
-    code: str,
-    state: str,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
 ) -> RedirectResponse:
+    trace_id = request.cookies.get("oauth_trace") or secrets.token_hex(12)
+    callback_started = time.perf_counter()
     expected = request.cookies.get("oauth_state", "")
-    if not expected or not hmac.compare_digest(expected, state):
+    if not expected or not state or not hmac.compare_digest(expected, state):
+        logger.warning(
+            "oauth_callback_rejected trace_id=%s stage=state_validation "
+            "state_cookie_present=%s state_fingerprint=%s expected_fingerprint=%s",
+            trace_id,
+            bool(expected),
+            _fingerprint(state),
+            _fingerprint(expected) if expected else "-",
+        )
         raise HTTPException(400, "Invalid OAuth state.")
+    if error:
+        logger.warning(
+            "oauth_callback_rejected trace_id=%s stage=provider_authorization "
+            "provider_error=%s provider_description=%s",
+            trace_id,
+            _safe_log_text(error),
+            _safe_log_text(error_description),
+        )
+        raise HTTPException(
+            400,
+            f"Basalam authorization was rejected. Diagnostic ID: {trace_id}",
+        )
+    if not code:
+        logger.warning(
+            "oauth_callback_rejected trace_id=%s stage=callback_parameters "
+            "reason=authorization_code_missing",
+            trace_id,
+        )
+        raise HTTPException(
+            400,
+            f"Basalam authorization code is missing. Diagnostic ID: {trace_id}",
+        )
+    logger.info(
+        "oauth_callback_started trace_id=%s stage=state_validation "
+        "state_fingerprint=%s code_fingerprint=%s client_host_fingerprint=%s",
+        trace_id,
+        _fingerprint(state),
+        _fingerprint(code),
+        _fingerprint(request.client.host) if request.client else "-",
+    )
     oauth_stage = "token_exchange"
     try:
-        token_data = await basalam.exchange_code(code)
+        token_data = await basalam.exchange_code(code, trace_id=trace_id)
         access = token_data["access_token"]
+        logger.info(
+            "oauth_stage_succeeded trace_id=%s stage=token_exchange "
+            "token_type=%s expires_in=%s refresh_token_present=%s",
+            trace_id,
+            token_data.get("token_type", "-"),
+            token_data.get("expires_in", "-"),
+            bool(token_data.get("refresh_token")),
+        )
         oauth_stage = "user_profile"
-        user = await basalam.me(access)
+        user = await basalam.me(access, trace_id=trace_id)
         vendor = user.get("vendor") or {}
         if not vendor.get("id"):
+            logger.warning(
+                "oauth_callback_rejected trace_id=%s stage=user_profile "
+                "reason=vendor_missing user_fingerprint=%s",
+                trace_id,
+                _fingerprint(user.get("id")),
+            )
             raise HTTPException(400, "This Basalam account has no vendor booth.")
+        logger.info(
+            "oauth_stage_succeeded trace_id=%s stage=user_profile "
+            "user_fingerprint=%s vendor_fingerprint=%s",
+            trace_id,
+            _fingerprint(user.get("id")),
+            _fingerprint(vendor.get("id")),
+        )
+        oauth_stage = "account_persistence"
         with connection() as db:
             db.execute(
                 """INSERT INTO accounts
@@ -242,12 +331,51 @@ async def auth_callback(
                     "queued",
                 ),
             )
+        logger.info(
+            "oauth_stage_succeeded trace_id=%s stage=account_persistence "
+            "user_fingerprint=%s",
+            trace_id,
+            _fingerprint(user.get("id")),
+        )
     except (BasalamError, KeyError) as exc:
-        logger.exception("Basalam OAuth callback failed stage=%s", oauth_stage)
-        raise HTTPException(502, str(exc)) from exc
+        logger.exception(
+            "oauth_callback_failed trace_id=%s stage=%s elapsed_ms=%s "
+            "exception_type=%s provider_status=%s error_kind=%s",
+            trace_id,
+            oauth_stage,
+            round((time.perf_counter() - callback_started) * 1000),
+            type(exc).__name__,
+            getattr(exc, "status_code", None),
+            getattr(exc, "error_kind", "missing_response_field"),
+        )
+        raise HTTPException(
+            502,
+            f"Basalam OAuth failed. Diagnostic ID: {trace_id}",
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "oauth_callback_unexpected_error trace_id=%s stage=%s elapsed_ms=%s",
+            trace_id,
+            oauth_stage,
+            round((time.perf_counter() - callback_started) * 1000),
+        )
+        raise HTTPException(
+            500,
+            f"OAuth processing failed. Diagnostic ID: {trace_id}",
+        )
     background_tasks.add_task(merchant_sync.sync_user, int(user["id"]))
+    logger.info(
+        "oauth_callback_succeeded trace_id=%s stage=session_created "
+        "elapsed_ms=%s user_fingerprint=%s sync_queued=true",
+        trace_id,
+        round((time.perf_counter() - callback_started) * 1000),
+        _fingerprint(user.get("id")),
+    )
     response = RedirectResponse("/merchant")
     response.delete_cookie("oauth_state")
+    response.delete_cookie("oauth_trace")
     response.set_cookie(
         COOKIE_NAME,
         create_session(int(user["id"])),
@@ -257,6 +385,18 @@ async def auth_callback(
         samesite="lax",
     )
     return response
+
+
+def _fingerprint(value: Any) -> str:
+    if value is None:
+        return "-"
+    return hashlib.sha256(str(value).encode()).hexdigest()[:12]
+
+
+def _safe_log_text(value: Any) -> str:
+    if value is None:
+        return "-"
+    return " ".join(str(value).split())[:300]
 
 
 def _merchant_user(request: Request) -> int:

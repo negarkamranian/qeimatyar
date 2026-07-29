@@ -3,8 +3,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+import time
 from typing import Any
 from urllib.parse import urlencode, urlsplit
+from uuid import uuid4
 
 import httpx
 from cryptography.fernet import Fernet
@@ -15,9 +17,16 @@ logger = logging.getLogger(__name__)
 
 
 class BasalamError(RuntimeError):
-    def __init__(self, message: str, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        *,
+        error_kind: str = "unknown",
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.error_kind = error_kind
 
 
 def _fernet() -> Fernet:
@@ -55,10 +64,14 @@ class BasalamClient:
         )
         return f"https://basalam.com/accounts/sso?{query}"
 
-    async def exchange_code(self, code: str) -> dict[str, Any]:
+    async def exchange_code(
+        self, code: str, *, trace_id: str | None = None
+    ) -> dict[str, Any]:
         return await self._request(
             "POST",
             f"{self.auth_base}/oauth/token",
+            trace_id=trace_id,
+            operation="oauth_token_exchange",
             json={
                 "grant_type": "authorization_code",
                 "client_id": settings.client_id,
@@ -80,8 +93,16 @@ class BasalamClient:
             },
         )
 
-    async def me(self, token: str) -> dict[str, Any]:
-        return await self._request("GET", f"{self.api_base}/users/me", token=token)
+    async def me(
+        self, token: str, *, trace_id: str | None = None
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"{self.api_base}/users/me",
+            token=token,
+            trace_id=trace_id,
+            operation="oauth_user_profile",
+        )
 
     async def products(self, token: str, vendor_id: int) -> list[dict[str, Any]]:
         products: list[dict[str, Any]] = []
@@ -137,11 +158,29 @@ class BasalamClient:
         url: str,
         *,
         token: str | None = None,
+        trace_id: str | None = None,
+        operation: str | None = None,
         **kwargs: Any,
     ) -> Any:
+        request_id = uuid4().hex[:16]
+        trace_id = trace_id or "-"
+        operation = operation or "basalam_api"
+        path = urlsplit(url).path
         headers = {"Accept": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        started = time.perf_counter()
+        logger.info(
+            "basalam_request_started trace_id=%s request_id=%s operation=%s "
+            "method=%s host=%s path=%s timeout_seconds=20 trust_env=%s",
+            trace_id,
+            request_id,
+            operation,
+            method,
+            urlsplit(url).hostname,
+            path,
+            settings.marketplace_trust_env,
+        )
         try:
             async with httpx.AsyncClient(
                 timeout=20,
@@ -150,7 +189,30 @@ class BasalamClient:
             ) as client:
                 response = await client.request(method, url, headers=headers, **kwargs)
                 response.raise_for_status()
-                return response.json()
+                payload = response.json()
+                elapsed_ms = round((time.perf_counter() - started) * 1000)
+                response_fields = (
+                    sorted(str(key) for key in payload.keys())
+                    if isinstance(payload, dict)
+                    else [f"<{type(payload).__name__}>"]
+                )
+                logger.info(
+                    "basalam_request_succeeded trace_id=%s request_id=%s "
+                    "operation=%s status=%s elapsed_ms=%s redirects=%s "
+                    "content_type=%s content_length=%s provider_request_id=%s "
+                    "response_fields=%s",
+                    trace_id,
+                    request_id,
+                    operation,
+                    response.status_code,
+                    elapsed_ms,
+                    len(response.history),
+                    response.headers.get("content-type", "-"),
+                    response.headers.get("content-length", "-"),
+                    _provider_request_id(response),
+                    response_fields,
+                )
+                return payload
         except httpx.HTTPStatusError as exc:
             response = exc.response
             error_detail: Any = None
@@ -158,25 +220,106 @@ class BasalamClient:
                 payload = response.json()
                 if isinstance(payload, dict):
                     error_detail = {
-                        key: payload[key]
+                        key: _redact_detail(payload[key], kwargs)
                         for key in ("error", "error_description", "message", "detail")
                         if key in payload
                     }
             except ValueError:
                 pass
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
             logger.warning(
-                "Basalam API rejected request method=%s path=%s status=%s detail=%r",
+                "basalam_request_rejected trace_id=%s request_id=%s operation=%s "
+                "method=%s path=%s status=%s elapsed_ms=%s redirects=%s "
+                "content_type=%s content_length=%s provider_request_id=%s detail=%r",
+                trace_id,
+                request_id,
+                operation,
                 method,
-                urlsplit(url).path,
+                path,
                 response.status_code,
+                elapsed_ms,
+                len(response.history),
+                response.headers.get("content-type", "-"),
+                response.headers.get("content-length", "-"),
+                _provider_request_id(response),
                 error_detail or "no structured error detail",
             )
             raise BasalamError(
                 f"Basalam request failed: HTTP {response.status_code}",
                 response.status_code,
+                error_kind="http_status",
             ) from exc
-        except (httpx.HTTPError, ValueError) as exc:
-            raise BasalamError(f"Basalam request failed: {exc}") from exc
+        except httpx.HTTPError as exc:
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
+            logger.exception(
+                "basalam_request_transport_error trace_id=%s request_id=%s "
+                "operation=%s method=%s host=%s path=%s elapsed_ms=%s "
+                "exception_type=%s",
+                trace_id,
+                request_id,
+                operation,
+                method,
+                urlsplit(url).hostname,
+                path,
+                elapsed_ms,
+                type(exc).__name__,
+            )
+            raise BasalamError(
+                f"Basalam transport failed ({type(exc).__name__})",
+                error_kind="transport",
+            ) from exc
+        except ValueError as exc:
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
+            logger.exception(
+                "basalam_response_decode_error trace_id=%s request_id=%s "
+                "operation=%s method=%s path=%s elapsed_ms=%s",
+                trace_id,
+                request_id,
+                operation,
+                method,
+                path,
+                elapsed_ms,
+            )
+            raise BasalamError(
+                "Basalam returned an invalid JSON response",
+                error_kind="invalid_json",
+            ) from exc
+
+
+def _provider_request_id(response: httpx.Response) -> str:
+    for name in ("x-request-id", "x-correlation-id", "traceparent", "request-id"):
+        if value := response.headers.get(name):
+            return value[:200]
+    return "-"
+
+
+def _redact_detail(value: Any, request_kwargs: dict[str, Any]) -> Any:
+    """Keep provider diagnostics useful without echoing OAuth credentials."""
+    secrets_to_hide = [
+        str(secret)
+        for key, secret in (request_kwargs.get("json") or {}).items()
+        if key in {"client_secret", "code", "access_token", "refresh_token"} and secret
+    ]
+
+    def clean(item: Any) -> Any:
+        if isinstance(item, dict):
+            return {
+                str(key): (
+                    "<redacted>"
+                    if str(key).lower()
+                    in {"client_secret", "code", "access_token", "refresh_token"}
+                    else clean(child)
+                )
+                for key, child in list(item.items())[:20]
+            }
+        if isinstance(item, list):
+            return [clean(child) for child in item[:20]]
+        text = str(item)[:1000]
+        for secret in secrets_to_hide:
+            text = text.replace(secret, "<redacted>")
+        return text
+
+    return clean(value)
 
 
 basalam = BasalamClient()

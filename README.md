@@ -165,6 +165,20 @@ curl https://YOUR_DOMAIN/health
 docker compose -f compose.production.yml logs -f --tail=100
 ```
 
+هر تلاش OAuth یک `trace_id` دارد که تمام مراحل callback و درخواست‌های خروجی
+باسلام را به هم وصل می‌کند. برای دنبال‌کردن یک خطا، `Diagnostic ID` نمایش‌داده‌شده
+در پاسخ 502 را در لاگ‌ها جست‌وجو کنید:
+
+```bash
+docker compose -f compose.production.yml logs app --since=15m | grep 'trace_id=DIAGNOSTIC_ID'
+```
+
+لاگ‌ها stage، زمان پاسخ، وضعیت HTTP، نوع خطای شبکه و request ID سمت باسلام را
+ثبت می‌کنند؛ authorization code، access/refresh token، client secret، cookie و
+شناسه خام کاربر در آن‌ها نوشته نمی‌شود.
+سطح پیش‌فرض `APP_LOG_LEVEL=INFO` است و برای مشاهده traceهای OAuth باید روی
+`INFO` یا `DEBUG` بماند.
+
 برای دامنه `qeimatyar.ir` مقدار redirect URI را دقیقاً
 `https://qeimatyar.ir/auth/basalam/callback` بگذارید و همان آدرس را در پنل
 توسعه‌دهندگان باسلام نیز ثبت کنید. بعد از بالا آمدن نسخه جدید، `/login` را باز
