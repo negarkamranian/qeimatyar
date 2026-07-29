@@ -151,6 +151,9 @@ h1, h2, p { margin-top: 0; }
 .merchant-back:hover { background: #dfeee8; }
 .ghost-button { border: 1px solid var(--line); background: #fff; border-radius: 9px; color: var(--muted); padding: 8px 12px; cursor: pointer; font-size: 11px; }
 .ghost-button:hover { background: var(--paper); color: var(--ink); }
+.merchant-price-note { margin: -8px 0 14px; padding: 10px 13px; display: flex; align-items: baseline; gap: 7px; border: 1px solid #d8e9e4; border-radius: 9px; background: #f4faf8; color: var(--muted); font-size: 10px; }
+.merchant-price-note strong { color: var(--ink); font-size: 13px; }
+.merchant-price-note small { color: #688078; }
 
 .pricing-card { border: 1px solid var(--line); border-radius: 17px; background: #fff; overflow: hidden; box-shadow: var(--shadow); }
 .selected-price { padding: 26px 28px 18px; }
@@ -249,6 +252,7 @@ footer p { margin: 0; }
   .result-head { align-items: flex-start; }
   .result-head h1 { max-width: 230px; }
   .result-actions { flex-direction: column-reverse; align-items: stretch; text-align: center; }
+  .merchant-price-note { align-items: flex-start; flex-wrap: wrap; }
   .selected-price { padding: 22px 18px 15px; }
   .selected-price strong { font-size: 34px; }
   .sale-signal { margin: 0 18px; align-items: flex-start; }

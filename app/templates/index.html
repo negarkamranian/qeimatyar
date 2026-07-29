@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20260729-2">
+  <link rel="stylesheet" href="/static/app.css?v=20260729-4">
 </head>
 <body>
   <header class="site-header">
@@ -99,6 +99,12 @@
         </div>
       </div>
 
+      <div id="merchant-price-note" class="merchant-price-note" hidden>
+        <span>قیمت فعلی غرفه</span>
+        <strong id="merchant-current-price">—</strong>
+        <small>تومان · این قیمت در محاسبه بازه و پیشنهاد استفاده نشده است.</small>
+      </div>
+
       <div class="pricing-card">
         <div class="selected-price">
           <small id="selected-price-label">قیمت انتخابی شما</small>
@@ -173,6 +179,6 @@
     <p>راهنمای قیمت‌گذاری؛ تصمیم نهایی همیشه با فروشنده است.</p>
   </footer>
 
-  <script src="/static/app.js?v=20260729-3" defer></script>
+  <script src="/static/app.js?v=20260729-4" defer></script>
 </body>
 </html>

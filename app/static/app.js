@@ -139,31 +139,26 @@ function renderResult(data) {
   document.querySelector("#confidence").textContent = `${fa(analysis.confidence)}٪`;
 
   const slider = document.querySelector("#price-slider");
-  const sliderLow = merchantContext.active && merchantContext.currentPrice
-    ? Math.min(scale.low, merchantContext.currentPrice)
-    : scale.low;
-  const sliderHigh = merchantContext.active && merchantContext.currentPrice
-    ? Math.max(scale.high, merchantContext.currentPrice)
-    : scale.high;
-  const spread = Math.max(sliderHigh - sliderLow, 2_000);
+  const spread = Math.max(scale.high - scale.low, 2_000);
   const step = spread < 1_000_000 ? 1_000 : 10_000;
-  currentSliderBands = sliderBands({
-    ...analysis,
-    scale: { low: sliderLow, high: sliderHigh },
-  });
+  currentSliderBands = sliderBands(analysis);
   slider.style.setProperty("--quick-stop", `${currentSliderBands.quickStop}%`);
   slider.style.setProperty("--patient-start", `${currentSliderBands.patientStart}%`);
   applySliderMarkerLayout();
-  slider.min = sliderLow;
-  slider.max = sliderHigh;
+  slider.min = scale.low;
+  slider.max = scale.high;
   slider.step = step;
-  slider.value = merchantContext.active && merchantContext.currentPrice
-    ? merchantContext.currentPrice
-    : analysis.recommended;
+  slider.value = analysis.recommended;
   document.querySelector("#selected-price-label").textContent =
-    merchantContext.active && merchantContext.currentPrice
-      ? "قیمت فعلی محصول شما"
+    merchantContext.active
+      ? "قیمت پیشنهادی بازار"
       : "قیمت انتخابی شما";
+  const merchantPriceNote = document.querySelector("#merchant-price-note");
+  merchantPriceNote.hidden = !(merchantContext.active && merchantContext.currentPrice);
+  if (merchantContext.active && merchantContext.currentPrice) {
+    document.querySelector("#merchant-current-price").textContent =
+      toman(merchantContext.currentPrice);
+  }
   document.querySelector("#merchant-back").hidden = !merchantContext.active;
   updateSelectedPrice();
 
@@ -253,6 +248,7 @@ document.querySelector("#new-search").addEventListener("click", () => {
   window.history.replaceState({}, "", nextUrl);
   merchantContext = { active: false, currentPrice: null, productId: null };
   document.querySelector("#merchant-back").hidden = true;
+  document.querySelector("#merchant-price-note").hidden = true;
   showView("search");
   document.querySelector("#product-name").focus();
 });
