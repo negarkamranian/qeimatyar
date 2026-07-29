@@ -32,11 +32,11 @@
       <div class="hero-copy">
         <span class="eyebrow">ترب + دیجی‌کالا + باسلام</span>
         <h1>محصولت را چند بفروشی؟</h1>
-        <p>نام دقیق محصول را بنویس؛ قیمت‌های مشابه را پیدا می‌کنیم و یک بازه مناسب فروش پیشنهاد می‌دهیم.</p>
+        <p>نام دقیق یا لینک محصول را وارد کن؛ قیمت‌های مشابه را پیدا می‌کنیم و یک بازه مناسب فروش پیشنهاد می‌دهیم.</p>
       </div>
 
       <form id="search-form" class="search-box">
-        <label for="product-name">نام محصول</label>
+        <label for="product-name">نام یا لینک محصول</label>
         <div class="search-control">
           <span class="search-icon" aria-hidden="true">⌕</span>
           <input
@@ -44,9 +44,9 @@
             name="product_name"
             type="text"
             minlength="2"
-            maxlength="160"
+            maxlength="1000"
             autocomplete="off"
-            placeholder="مثلاً گوشی سامسونگ A55 ظرفیت 256 گیگ"
+            placeholder="نام محصول یا لینک آن در باسلام، ترب یا دیجی‌کالا"
             required
           >
           <button type="submit">محاسبه قیمت</button>
@@ -93,12 +93,15 @@
           <span class="eyebrow">تحلیل بازار</span>
           <h1 id="result-title"></h1>
         </div>
-        <button id="new-search" class="ghost-button">جست‌وجوی جدید</button>
+        <div class="result-actions">
+          <a id="merchant-back" class="merchant-back" href="/merchant" hidden>بازگشت به محصولات غرفه</a>
+          <button id="new-search" class="ghost-button">جست‌وجوی جدید</button>
+        </div>
       </div>
 
       <div class="pricing-card">
         <div class="selected-price">
-          <small>قیمت انتخابی شما</small>
+          <small id="selected-price-label">قیمت انتخابی شما</small>
           <div><strong id="selected-price">—</strong><span>تومان</span></div>
         </div>
 

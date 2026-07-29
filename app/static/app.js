@@ -7,6 +7,12 @@ const views = {
 const sourceNames = { torob: "ترب", digikala: "دیجی‌کالا", basalam: "باسلام" };
 let currentAnalysis = null;
 let currentSliderBands = null;
+const pageParams = new URLSearchParams(window.location.search);
+let merchantContext = {
+  active: pageParams.get("from") === "merchant",
+  currentPrice: Number(pageParams.get("price")) || null,
+  productId: Number(pageParams.get("product_id")) || null,
+};
 
 const toman = value => new Intl.NumberFormat("fa-IR").format(Math.round(value || 0));
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
@@ -90,12 +96,17 @@ async function analyze(productName) {
   nextUrl.searchParams.set("q", productName);
   window.history.replaceState({}, "", nextUrl);
   showView("loading");
-  document.querySelector("#loading-product").textContent = productName;
+  document.querySelector("#loading-product").textContent =
+    /^https?:\/\//i.test(productName) ? "در حال خواندن لینک محصول…" : productName;
   try {
+    const requestBody = { product_name: productName };
+    if (merchantContext.active && merchantContext.productId) {
+      requestBody.exclude_basalam_product_id = merchantContext.productId;
+    }
     const response = await fetch("/api/market/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product_name: productName }),
+      body: JSON.stringify(requestBody),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -125,16 +136,32 @@ function renderResult(data) {
   document.querySelector("#confidence").textContent = `${fa(analysis.confidence)}٪`;
 
   const slider = document.querySelector("#price-slider");
-  const spread = Math.max(scale.high - scale.low, 2_000);
+  const sliderLow = merchantContext.active && merchantContext.currentPrice
+    ? Math.min(scale.low, merchantContext.currentPrice)
+    : scale.low;
+  const sliderHigh = merchantContext.active && merchantContext.currentPrice
+    ? Math.max(scale.high, merchantContext.currentPrice)
+    : scale.high;
+  const spread = Math.max(sliderHigh - sliderLow, 2_000);
   const step = spread < 1_000_000 ? 1_000 : 10_000;
-  currentSliderBands = sliderBands(analysis);
+  currentSliderBands = sliderBands({
+    ...analysis,
+    scale: { low: sliderLow, high: sliderHigh },
+  });
   slider.style.setProperty("--quick-stop", `${currentSliderBands.quickStop}%`);
   slider.style.setProperty("--patient-start", `${currentSliderBands.patientStart}%`);
   applySliderMarkerLayout();
-  slider.min = scale.low;
-  slider.max = scale.high;
+  slider.min = sliderLow;
+  slider.max = sliderHigh;
   slider.step = step;
-  slider.value = analysis.recommended;
+  slider.value = merchantContext.active && merchantContext.currentPrice
+    ? merchantContext.currentPrice
+    : analysis.recommended;
+  document.querySelector("#selected-price-label").textContent =
+    merchantContext.active && merchantContext.currentPrice
+      ? "قیمت فعلی محصول شما"
+      : "قیمت انتخابی شما";
+  document.querySelector("#merchant-back").hidden = !merchantContext.active;
   updateSelectedPrice();
 
   const counts = analysis.source_counts;
@@ -211,12 +238,18 @@ document.querySelectorAll("[data-example]").forEach(button => {
 document.querySelector("#price-slider").addEventListener("input", updateSelectedPrice);
 document.querySelector("#use-recommended").addEventListener("click", () => {
   document.querySelector("#price-slider").value = currentAnalysis.recommended;
+  document.querySelector("#selected-price-label").textContent = "قیمت انتخابی شما";
   updateSelectedPrice();
 });
 document.querySelector("#new-search").addEventListener("click", () => {
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.delete("q");
+  nextUrl.searchParams.delete("from");
+  nextUrl.searchParams.delete("price");
+  nextUrl.searchParams.delete("product_id");
   window.history.replaceState({}, "", nextUrl);
+  merchantContext = { active: false, currentPrice: null, productId: null };
+  document.querySelector("#merchant-back").hidden = true;
   showView("search");
   document.querySelector("#product-name").focus();
 });
@@ -231,7 +264,7 @@ document.querySelector("#toggle-listings").addEventListener("click", event => {
 });
 window.addEventListener("resize", applySliderMarkerLayout);
 
-const initialQuery = new URLSearchParams(window.location.search).get("q");
+const initialQuery = pageParams.get("q");
 if (initialQuery && initialQuery.trim().length >= 2) {
   document.querySelector("#product-name").value = initialQuery.trim();
   analyze(initialQuery.trim());

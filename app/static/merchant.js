@@ -38,6 +38,15 @@ function formatDate(value) {
     dateStyle: "medium", timeStyle: "short",
   }).format(new Date(value));
 }
+function productAnalysisUrl(product) {
+  const params = new URLSearchParams({
+    q: product.title,
+    from: "merchant",
+    price: String(product.current_price),
+    product_id: String(product.product_id),
+  });
+  return `/?${params.toString()}`;
+}
 function productRow(product) {
   const image = safeImage(product.image_url);
   const imageNode = image
@@ -48,11 +57,12 @@ function productRow(product) {
     ? `<strong>${toman(product.effective_min)} تا ${toman(product.effective_max)}</strong>
        ${product.customized ? '<span class="custom-badge">شخصی</span>' : ""}`
     : `<strong class="estimate-error">${escapeHtml(product.estimate_error || "در انتظار تحلیل")}</strong>`;
+  const analysisUrl = escapeHtml(productAnalysisUrl(product));
   return `<article class="product-row" data-title="${escapeHtml(product.title.toLowerCase())}">
-    <div class="product-identity">${imageNode}<span>
+    <a class="product-identity" href="${analysisUrl}">${imageNode}<span>
       <strong title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</strong>
-      <small>موجودی ${fa(product.stock)}</small>
-    </span></div>
+      <small>موجودی ${fa(product.stock)} · مشاهده تحلیل بازار</small>
+    </span></a>
     <div class="price-block"><small>قیمت فعلی</small><strong>${toman(product.current_price)} تومان</strong></div>
     <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
     <button class="edit-range" data-edit="${product.product_id}" ${hasEstimate ? "" : "disabled"}>تنظیم</button>
@@ -137,4 +147,3 @@ document.querySelector("#reset-range").addEventListener("click", async () => {
   catch (error) { document.querySelector("#range-error").textContent = error.message; }
 });
 loadDashboard().catch(error => toast(error.message));
-

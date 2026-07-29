@@ -26,6 +26,7 @@ from app.db import connection, init_db, now_iso, rows, seed_demo
 from app.marketplaces import analyze_listings, market_crawler
 from app.merchant_sync import merchant_sync, token_expiry_iso
 from app.pricing import decide_reprice, recommend_price
+from app.product_input import ProductLinkError, resolve_product_query
 from app.sessions import COOKIE_NAME, SESSION_SECONDS, create_session, read_session
 
 BASE = Path(__file__).resolve().parent
@@ -54,7 +55,8 @@ class PolicyInput(BaseModel):
 
 
 class MarketSearchInput(BaseModel):
-    product_name: str = Field(min_length=2, max_length=160)
+    product_name: str = Field(min_length=2, max_length=1000)
+    exclude_basalam_product_id: int | None = Field(default=None, gt=0)
 
 
 class RangeOverrideInput(BaseModel):
@@ -146,7 +148,10 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
             "تعداد جست‌وجوها بیش از حد مجاز است؛ یک دقیقه دیگر دوباره تلاش کنید.",
             headers={"Retry-After": "60"},
         )
-    query = " ".join(payload.product_name.split())
+    try:
+        query, resolved_from_url = await resolve_product_query(payload.product_name)
+    except ProductLinkError as exc:
+        raise HTTPException(422, str(exc)) from exc
     try:
         crawl = await market_crawler.search(query)
     except Exception as exc:
@@ -159,7 +164,15 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
     if not any(status["ok"] for status in statuses):
         raise HTTPException(502, "هیچ‌کدام از بازارها در دسترس نبودند؛ کمی بعد دوباره تلاش کنید.")
     try:
-        analysis = analyze_listings(crawl["listings"])
+        listings = crawl["listings"]
+        if payload.exclude_basalam_product_id:
+            own_url = f"https://basalam.com/p/{payload.exclude_basalam_product_id}"
+            listings = [
+                listing
+                for listing in listings
+                if not (listing.source == "basalam" and listing.url == own_url)
+            ]
+        analysis = analyze_listings(listings)
     except ValueError as exc:
         raise HTTPException(
             422,
@@ -171,6 +184,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         ) from exc
     return {
         "query": query,
+        "resolved_from_url": resolved_from_url,
         "analysis": analysis,
         "sources": statuses,
         "raw_count": crawl["raw_count"],
