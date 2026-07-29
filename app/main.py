@@ -23,10 +23,18 @@ from pydantic import BaseModel, Field
 from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
 from app.config import settings
 from app.db import connection, init_db, now_iso, rows, seed_demo
-from app.marketplaces import analyze_listings, market_crawler
+from app.marketplaces import (
+    analyze_listings,
+    exclude_marketplace_product,
+    market_crawler,
+)
 from app.merchant_sync import merchant_sync, token_expiry_iso
 from app.pricing import decide_reprice, recommend_price
-from app.product_input import ProductLinkError, resolve_product_query
+from app.product_input import (
+    ProductLinkError,
+    basalam_product_id_from_url,
+    resolve_product_query,
+)
 from app.sessions import COOKIE_NAME, SESSION_SECONDS, create_session, read_session
 
 BASE = Path(__file__).resolve().parent
@@ -165,13 +173,16 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         raise HTTPException(502, "هیچ‌کدام از بازارها در دسترس نبودند؛ کمی بعد دوباره تلاش کنید.")
     try:
         listings = crawl["listings"]
-        if payload.exclude_basalam_product_id:
-            own_url = f"https://basalam.com/p/{payload.exclude_basalam_product_id}"
-            listings = [
-                listing
-                for listing in listings
-                if not (listing.source == "basalam" and listing.url == own_url)
-            ]
+        excluded_product_id = (
+            payload.exclude_basalam_product_id
+            or basalam_product_id_from_url(payload.product_name)
+        )
+        if excluded_product_id:
+            listings = exclude_marketplace_product(
+                listings,
+                "basalam",
+                excluded_product_id,
+            )
         analysis = analyze_listings(listings)
     except ValueError as exc:
         raise HTTPException(

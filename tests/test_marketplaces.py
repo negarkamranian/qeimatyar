@@ -7,8 +7,30 @@ from app.marketplaces import (
     parse_basalam,
     parse_digikala,
     parse_torob,
+    exclude_marketplace_product,
     title_similarity,
 )
+
+
+def test_exclude_marketplace_product_uses_external_id_not_url_shape():
+    listings = [
+        MarketListing(
+            "basalam",
+            "محصول خود غرفه",
+            100_000,
+            "https://basalam.com/product/somewhere",
+            external_id="42",
+        ),
+        MarketListing(
+            "basalam",
+            "محصول مشابه",
+            120_000,
+            "https://basalam.com/p/43",
+            external_id="43",
+        ),
+    ]
+    result = exclude_marketplace_product(listings, "basalam", 42)
+    assert [listing.external_id for listing in result] == ["43"]
 
 
 def test_torob_parser_keeps_toman_price():

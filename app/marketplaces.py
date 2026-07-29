@@ -7,6 +7,7 @@ import unicodedata
 from dataclasses import asdict, dataclass
 from statistics import median
 from typing import Any
+from urllib.parse import urlsplit
 import httpx
 
 from app.config import settings
@@ -40,9 +41,11 @@ class MarketListing:
     url: str
     image_url: str = ""
     similarity: float = 0
+    external_id: str = ""
 
     def public_dict(self) -> dict[str, Any]:
         data = asdict(self)
+        data.pop("external_id", None)
         data["similarity"] = round(self.similarity, 2)
         return data
 
@@ -178,9 +181,30 @@ def parse_basalam(payload: Any, query: str) -> list[MarketListing]:
                 url=f"https://basalam.com/p/{product_id}" if product_id else "https://basalam.com",
                 image_url=_first_image(item.get("photo")),
                 similarity=title_similarity(query, title),
+                external_id=str(product_id) if product_id is not None else "",
             )
         )
     return listings
+
+
+def exclude_marketplace_product(
+    listings: list[MarketListing],
+    source: str,
+    external_id: int | str,
+) -> list[MarketListing]:
+    identifier = str(external_id)
+
+    def is_same_product(listing: MarketListing) -> bool:
+        if listing.source != source:
+            return False
+        if listing.external_id and listing.external_id == identifier:
+            return True
+        # Backward-compatible fallback for cached/adapted listings without an ID.
+        return identifier in {
+            segment for segment in urlsplit(listing.url).path.split("/") if segment
+        }
+
+    return [listing for listing in listings if not is_same_product(listing)]
 
 
 class MarketCrawler:

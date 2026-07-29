@@ -42,7 +42,14 @@ def test_market_analysis_resolves_link_and_excludes_own_basalam_product(monkeypa
         return "محصول نمونه", True
 
     listings = [
-        MarketListing("basalam", "محصول خود غرفه", 400_000, "https://basalam.com/p/42", similarity=1),
+        MarketListing(
+            "basalam",
+            "محصول خود غرفه",
+            400_000,
+            "https://basalam.com/product/42?ref=search",
+            similarity=1,
+            external_id="42",
+        ),
         MarketListing("torob", "محصول نمونه", 450_000, "https://torob.com/a", similarity=1),
         MarketListing("digikala", "محصول نمونه", 480_000, "https://digikala.com/a", similarity=1),
         MarketListing("basalam", "محصول مشابه", 510_000, "https://basalam.com/p/43", similarity=1),
@@ -67,14 +74,15 @@ def test_market_analysis_resolves_link_and_excludes_own_basalam_product(monkeypa
             "/api/market/analyze",
             json={
                 "product_name": "https://basalam.com/p/42",
-                "exclude_basalam_product_id": 42,
             },
         )
     assert response.status_code == 200
     body = response.json()
     assert body["resolved_from_url"]
     assert body["query"] == "محصول نمونه"
+    assert body["analysis"]["recommended"] == 480_000
+    assert body["analysis"]["sample_size"] == 3
     assert all(
-        item["url"] != "https://basalam.com/p/42"
+        item["url"] != "https://basalam.com/product/42?ref=search"
         for item in body["analysis"]["listings"]
     )

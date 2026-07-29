@@ -9,7 +9,11 @@ from typing import Any
 from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
 from app.config import settings
 from app.db import connection, now_iso, rows
-from app.marketplaces import analyze_listings, market_crawler
+from app.marketplaces import (
+    analyze_listings,
+    exclude_marketplace_product,
+    market_crawler,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +164,12 @@ class MerchantSyncService:
                     async with semaphore:
                         try:
                             crawl = await market_crawler.search(product["title"])
-                            analysis = analyze_listings(crawl["listings"])
+                            comparable_listings = exclude_marketplace_product(
+                                crawl["listings"],
+                                "basalam",
+                                product["id"],
+                            )
+                            analysis = analyze_listings(comparable_listings)
                             with connection() as db:
                                 db.execute(
                                     """UPDATE merchant_products SET
@@ -250,4 +259,3 @@ class MerchantSyncService:
 
 
 merchant_sync = MerchantSyncService()
-

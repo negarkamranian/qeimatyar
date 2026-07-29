@@ -107,6 +107,19 @@ def _title_from_path(value: str) -> str:
     return ""
 
 
+def basalam_product_id_from_url(value: str) -> int | None:
+    parsed = urlsplit(value.strip())
+    if (parsed.hostname or "").lower() not in {"basalam.com", "www.basalam.com"}:
+        return None
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    for index, segment in enumerate(segments[:-1]):
+        if segment.lower() in {"p", "product", "products"}:
+            candidate = segments[index + 1]
+            if candidate.isdigit():
+                return int(candidate)
+    return None
+
+
 async def _fetch_product_html(value: str) -> str:
     current_url = _validated_url(value)
     headers = {
