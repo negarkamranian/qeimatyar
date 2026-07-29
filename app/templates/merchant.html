@@ -17,21 +17,13 @@
       <span><strong>قیمت‌یار</strong><small>راهنمای قیمت غرفه</small></span>
     </a>
     <div class="account-actions">
-      <div class="notification-menu">
-        <button id="notifications-button" class="notification-button" type="button" aria-label="اعلان‌ها" aria-expanded="false">
-          <span class="bell-mark" aria-hidden="true"></span>
-          <span id="notifications-badge" class="notification-badge" hidden>۰</span>
-        </button>
-        <section id="notifications-panel" class="notifications-panel" hidden>
-          <div class="notifications-head">
-            <strong>اعلان‌ها</strong>
-            <button id="mark-notifications-read" type="button">خواندن همه</button>
-          </div>
-          <div id="notifications-list" class="notifications-list">
-            <div class="empty-state">در حال بارگذاری…</div>
-          </div>
-        </section>
-      </div>
+      <a class="notification-button" href="/merchant/notifications" aria-label="اعلان‌ها">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+          <path d="M10 21h4"></path>
+        </svg>
+        <span id="notifications-badge" class="notification-badge" hidden>۰</span>
+      </a>
       <a href="/">جست‌وجوی تکی</a>
       <form method="post" action="/logout"><button>خروج</button></form>
     </div>

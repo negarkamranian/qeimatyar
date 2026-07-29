@@ -46,48 +46,15 @@ function productAnalysisUrl(product) {
   });
   return `/?${params.toString()}`;
 }
-function safeInternalUrl(value) {
-  if (!value) return "";
-  try {
-    const url = new URL(value, window.location.origin);
-    return url.origin === window.location.origin ? escapeHtml(`${url.pathname}${url.search}${url.hash}`) : "";
-  } catch { return ""; }
-}
-function notificationItem(notification) {
-  const href = safeInternalUrl(notification.target_url);
-  const tag = href ? "a" : "button";
-  const attrs = href
-    ? `href="${href}"`
-    : `type="button"`;
-  return `<${tag} class="notification-item ${notification.read ? "" : "unread"}" data-notification-id="${notification.id}" ${attrs}>
-    <span class="notification-dot"></span>
-    <span>
-      <strong>${escapeHtml(notification.title)}</strong>
-      <small>${escapeHtml(notification.body)}</small>
-      <time>${escapeHtml(formatDate(notification.created_at))}</time>
-    </span>
-  </${tag}>`;
-}
 function renderNotifications(unreadCount = 0) {
   const badge = document.querySelector("#notifications-badge");
   badge.hidden = unreadCount <= 0;
   badge.textContent = fa(unreadCount);
-  document.querySelector("#notifications-list").innerHTML = state.notifications.length
-    ? state.notifications.map(notificationItem).join("")
-    : `<div class="empty-state">اعلانی ندارید.</div>`;
 }
 async function loadNotifications() {
   const data = await api("/api/merchant/notifications");
   state.notifications = data.notifications;
   renderNotifications(data.unread_count);
-}
-async function markNotificationRead(notificationId) {
-  await api(`/api/merchant/notifications/${notificationId}/read`, { method: "PATCH" });
-  await loadNotifications();
-}
-async function markAllNotificationsRead() {
-  await api("/api/merchant/notifications/read-all", { method: "POST" });
-  await loadNotifications();
 }
 function productRow(product) {
   const image = safeImage(product.image_url);
@@ -171,43 +138,16 @@ async function saveRange(minPrice, maxPrice) {
 }
 document.querySelector("#sync-button").addEventListener("click", startSync);
 document.querySelector("#product-filter").addEventListener("input", renderProducts);
-document.querySelector("#notifications-button").addEventListener("click", () => {
-  const panel = document.querySelector("#notifications-panel");
-  const open = panel.hidden;
-  panel.hidden = !open;
-  document.querySelector("#notifications-button").setAttribute("aria-expanded", String(open));
-  if (open) loadNotifications().catch(error => toast(error.message));
-});
-document.querySelector("#mark-notifications-read").addEventListener("click", async () => {
-  try { await markAllNotificationsRead(); }
-  catch (error) { toast(error.message); }
-});
 document.addEventListener("click", event => {
   const edit = event.target.closest("[data-edit]");
   if (edit) {
     openRange(edit.dataset.edit);
     return;
   }
-  const notification = event.target.closest("[data-notification-id]");
-  if (notification && notification.classList.contains("unread")) {
-    const href = notification.getAttribute("href");
-    if (href) event.preventDefault();
-    markNotificationRead(notification.dataset.notificationId)
-      .then(() => { if (href) window.location.href = href; })
-      .catch(error => toast(error.message));
-  }
   if (event.target.closest("[data-close]")) document.querySelector("#range-dialog").close();
   const row = event.target.closest(".product-row[data-analysis-url]");
   if (row && !event.target.closest("a, button")) {
     window.location.href = row.dataset.analysisUrl;
-    return;
-  }
-  if (
-    !event.target.closest(".notification-menu")
-    && !document.querySelector("#notifications-panel").hidden
-  ) {
-    document.querySelector("#notifications-panel").hidden = true;
-    document.querySelector("#notifications-button").setAttribute("aria-expanded", "false");
   }
 });
 document.querySelector("#range-form").addEventListener("submit", async event => {

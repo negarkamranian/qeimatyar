@@ -519,6 +519,29 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
     }
 
 
+@app.get("/merchant/notifications", response_class=HTMLResponse)
+def merchant_notifications_page(request: Request) -> HTMLResponse:
+    user_id = _merchant_user(request)
+    account = rows(
+        "SELECT vendor_title,user_name FROM accounts WHERE user_id=?",
+        (user_id,),
+    )
+    if not account:
+        response = RedirectResponse("/login")
+        response.delete_cookie(COOKIE_NAME)
+        return response
+    unread_count = rows(
+        """SELECT COUNT(*) AS count FROM merchant_notifications
+        WHERE user_id=? AND read_at IS NULL""",
+        (user_id,),
+    )[0]["count"]
+    return templates.TemplateResponse(
+        request=request,
+        name="notifications.html",
+        context={"account": account[0], "unread_count": unread_count},
+    )
+
+
 @app.get("/api/merchant/notifications")
 def merchant_notifications(
     request: Request,
