@@ -20,6 +20,29 @@ button, input { font: inherit; }
 .simple-header > a:last-child, .account-actions a { color: var(--muted); font-size: 10px; text-decoration: none; }
 .account-actions { display: flex; align-items: center; gap: 15px; }
 .account-actions form { margin: 0; }.account-actions button { border: 0; background: transparent; color: #a44; cursor: pointer; font-size: 10px; }
+.notification-button { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--green) !important; }
+.notification-button:hover { background: var(--paper); color: var(--green) !important; }
+.notification-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.notification-badge { position: absolute; right: -5px; top: -5px; min-width: 17px; height: 17px; padding: 0 4px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 999px; background: var(--orange); color: #fff; font-size: 8px; font-weight: 800; line-height: 1; }
+.notifications-main { width: min(840px, calc(100% - 32px)); }
+.notifications-page { margin-top: 24px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.notifications-list { background: #fff; }
+.notification-item { width: 100%; display: grid; grid-template-columns: 8px 1fr; gap: 10px; padding: 12px 14px; border: 0; border-top: 1px solid var(--line); background: #fff; color: var(--ink); text-align: right; text-decoration: none; cursor: pointer; }
+.notification-item:first-child { border-top: 0; }
+.notification-item:hover { background: #fcfdfc; }
+.notification-item.page-item { padding: 16px 18px; }
+.notification-item.unread { background: #f4faf8; }
+.notification-item.expanded { background: #fff; }
+.notification-dot { width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: transparent; }
+.notification-item.unread .notification-dot { background: var(--teal); }
+.notification-item strong, .notification-item small, .notification-item time { display: block; }
+.notification-item strong { font-size: 11px; }
+.notification-item.page-item strong { font-size: 12px; }
+.notification-item small { margin-top: 3px; color: #52605b; font-size: 9px; line-height: 1.8; }
+.notification-item.page-item small { font-size: 10px; }
+.notification-item time { margin-top: 5px; color: var(--muted); font-size: 8px; }
+.notification-body { display: none; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--line); color: #31413b; font-size: 10px; line-height: 2; }
+.notification-item.expanded .notification-body { display: block; }
 .eyebrow { margin: 0 0 5px; color: var(--teal); font-size: 10px; font-weight: 800; }
 
 .login-body { min-height: 100vh; background: linear-gradient(#fff 65%, #f7f9f7); }

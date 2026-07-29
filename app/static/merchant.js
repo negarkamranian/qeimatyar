@@ -1,4 +1,4 @@
-const state = { products: [], status: "idle", pollTimer: null };
+const state = { products: [], notifications: [], status: "idle", pollTimer: null };
 const toman = value => new Intl.NumberFormat("fa-IR").format(value || 0);
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
 
@@ -45,6 +45,16 @@ function productAnalysisUrl(product) {
     product_id: String(product.product_id),
   });
   return `/?${params.toString()}`;
+}
+function renderNotifications(unreadCount = 0) {
+  const badge = document.querySelector("#notifications-badge");
+  badge.hidden = unreadCount <= 0;
+  badge.textContent = fa(unreadCount);
+}
+async function loadNotifications() {
+  const data = await api("/api/merchant/notifications");
+  state.notifications = data.notifications;
+  renderNotifications(data.unread_count);
 }
 function productRow(product) {
   const image = safeImage(product.image_url);
@@ -155,4 +165,4 @@ document.querySelector("#reset-range").addEventListener("click", async () => {
   try { await saveRange(null, null); }
   catch (error) { document.querySelector("#range-error").textContent = error.message; }
 });
-loadDashboard().catch(error => toast(error.message));
+Promise.all([loadDashboard(), loadNotifications()]).catch(error => toast(error.message));

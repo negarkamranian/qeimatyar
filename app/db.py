@@ -99,6 +99,21 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_merchant_products_user
               ON merchant_products(user_id);
+            CREATE TABLE IF NOT EXISTS merchant_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                kind TEXT NOT NULL DEFAULT 'info',
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                target_url TEXT,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                read_at TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_merchant_notifications_user_created
+              ON merchant_notifications(user_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_merchant_notifications_user_unread
+              ON merchant_notifications(user_id, read_at);
             """
         )
         account_columns = {

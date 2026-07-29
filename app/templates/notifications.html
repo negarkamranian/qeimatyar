@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>اعلان‌های {{ account.vendor_title }} — قیمت‌یار</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/merchant.css">
+</head>
+<body>
+  <header class="simple-header">
+    <a class="brand" href="/">
+      <span class="brand-mark">ق</span>
+      <span><strong>قیمت‌یار</strong><small>راهنمای قیمت غرفه</small></span>
+    </a>
+    <div class="account-actions">
+      <a href="/merchant">محصولات غرفه</a>
+      <form method="post" action="/logout"><button>خروج</button></form>
+    </div>
+  </header>
+
+  <main class="merchant-main notifications-main">
+    <section class="merchant-head">
+      <div>
+        <p class="eyebrow">اعلان‌های غرفه</p>
+        <h1>{{ account.vendor_title }}</h1>
+        <p><span id="unread-count">{{ unread_count }}</span> اعلان خوانده‌نشده</p>
+      </div>
+      <button id="mark-notifications-read" class="sync-button">خواندن همه</button>
+    </section>
+
+    <section class="notifications-page">
+      <div id="notifications-list" class="notifications-list page-list">
+        <div class="empty-state">در حال بارگذاری…</div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" role="status"></div>
+  <script src="/static/notifications.js" defer></script>
+</body>
+</html>
