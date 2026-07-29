@@ -52,7 +52,7 @@ button, input { font: inherit; }
 .spinner { width: 24px; height: 24px; border: 2px solid #cce3dd; border-top-color: var(--teal); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .products-list { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.product-row { display: grid; grid-template-columns: minmax(250px, 1.5fr) .75fr 1fr auto; align-items: center; gap: 18px; padding: 14px 16px; border-top: 1px solid var(--line); }
+.product-row { display: grid; grid-template-columns: minmax(250px, 1.5fr) .75fr 1fr auto; align-items: center; gap: 18px; padding: 14px 16px; border-top: 1px solid var(--line); cursor: pointer; }
 .product-row:first-child { border: 0; }.product-row:hover { background: #fcfdfc; }
 .product-identity { display: flex; gap: 10px; align-items: center; min-width: 0; color: var(--ink); text-decoration: none; }
 .product-identity:hover strong { color: var(--teal); }
@@ -66,6 +66,9 @@ button, input { font: inherit; }
 .estimate-error { color: #9a7460 !important; font-weight: 500; }
 .edit-range { border: 1px solid var(--line); background: #fff; color: var(--green); border-radius: 7px; padding: 7px 10px; font-size: 9px; cursor: pointer; }
 .edit-range:hover { background: #edf6f2; }.edit-range:disabled { opacity: .45; cursor: default; }
+.product-actions { display: flex; align-items: center; gap: 6px; }
+.analysis-link { border-radius: 7px; padding: 7px 10px; background: var(--green); color: #fff; text-decoration: none; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.analysis-link:hover { background: #0f3c31; }
 .empty-state { padding: 45px; text-align: center; color: var(--muted); font-size: 11px; }
 
 dialog { width: min(500px, calc(100% - 28px)); border: 0; border-radius: 15px; padding: 0; box-shadow: 0 30px 90px rgba(22,40,34,.27); }
@@ -91,6 +94,7 @@ dialog h2 { margin: 0; font-size: 17px; max-width: 390px; }.dialog-copy { color:
   .section-title { align-items: flex-start; gap: 12px; }.section-title input { width: 145px; }
   .product-row { grid-template-columns: 1fr auto; gap: 10px; }
   .product-identity { grid-column: 1 / 3; }.range-block { text-align: right; }
+  .product-actions { grid-column: 1 / 3; justify-content: flex-end; }
   .range-fields { grid-template-columns: 1fr; }
   .dialog-actions { align-items: flex-start; gap: 12px; }
 }

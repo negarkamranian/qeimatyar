@@ -58,14 +58,17 @@ function productRow(product) {
        ${product.customized ? '<span class="custom-badge">شخصی</span>' : ""}`
     : `<strong class="estimate-error">${escapeHtml(product.estimate_error || "در انتظار تحلیل")}</strong>`;
   const analysisUrl = escapeHtml(productAnalysisUrl(product));
-  return `<article class="product-row" data-title="${escapeHtml(product.title.toLowerCase())}">
+  return `<article class="product-row" data-title="${escapeHtml(product.title.toLowerCase())}" data-analysis-url="${analysisUrl}">
     <a class="product-identity" href="${analysisUrl}">${imageNode}<span>
       <strong title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</strong>
       <small>موجودی ${fa(product.stock)} · مشاهده تحلیل بازار</small>
     </span></a>
     <div class="price-block"><small>قیمت فعلی</small><strong>${toman(product.current_price)} تومان</strong></div>
     <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
-    <button class="edit-range" data-edit="${product.product_id}" ${hasEstimate ? "" : "disabled"}>تنظیم</button>
+    <div class="product-actions">
+      <a class="analysis-link" href="${analysisUrl}">تحلیل بازار</a>
+      <button class="edit-range" data-edit="${product.product_id}" ${hasEstimate ? "" : "disabled"}>تنظیم</button>
+    </div>
   </article>`;
 }
 function renderProducts() {
@@ -128,8 +131,15 @@ document.querySelector("#sync-button").addEventListener("click", startSync);
 document.querySelector("#product-filter").addEventListener("input", renderProducts);
 document.addEventListener("click", event => {
   const edit = event.target.closest("[data-edit]");
-  if (edit) openRange(edit.dataset.edit);
+  if (edit) {
+    openRange(edit.dataset.edit);
+    return;
+  }
   if (event.target.closest("[data-close]")) document.querySelector("#range-dialog").close();
+  const row = event.target.closest(".product-row[data-analysis-url]");
+  if (row && !event.target.closest("a, button")) {
+    window.location.href = row.dataset.analysisUrl;
+  }
 });
 document.querySelector("#range-form").addEventListener("submit", async event => {
   event.preventDefault();
