@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict
 from typing import Awaitable, Callable, Any
 
@@ -9,6 +10,7 @@ from app.db import connection, now_iso, rows
 from app.nobitex import NobitexRate, nobitex
 
 RateFetcher = Callable[[], Awaitable[NobitexRate]]
+logger = logging.getLogger(__name__)
 
 
 def _fa_number(value: int | float) -> str:
@@ -113,6 +115,12 @@ async def check_usdt_rate_change(
     )
     if not state:
         _upsert_state(rate, notified=False, keep_notified_price=rate.price_toman)
+        logger.info(
+            "usdt_rate_baseline_created symbol=%s price_toman=%s source=%s",
+            rate.symbol,
+            rate.price_toman,
+            rate.source,
+        )
         return {
             "ok": True,
             "symbol": rate.symbol,
@@ -124,7 +132,37 @@ async def check_usdt_rate_change(
     baseline = state[0]["last_notified_price_toman"] or state[0]["last_price_toman"]
     change = _change_percent(int(baseline), rate.price_toman)
     should_notify = settings.usdt_notification_enabled and abs(change) >= threshold
+    logger.info(
+        "usdt_rate_checked symbol=%s current_price_toman=%s baseline_price_toman=%s "
+        "change_percent=%s threshold_percent=%s notification_enabled=%s notified=%s",
+        rate.symbol,
+        rate.price_toman,
+        int(baseline),
+        round(change, 4),
+        threshold,
+        settings.usdt_notification_enabled,
+        should_notify,
+    )
     notified_accounts = _notify_merchants(rate, change, int(baseline)) if should_notify else 0
+    if should_notify:
+        logger.info(
+            "usdt_rate_notification_created symbol=%s notified_accounts=%s current_price_toman=%s "
+            "baseline_price_toman=%s change_percent=%s",
+            rate.symbol,
+            notified_accounts,
+            rate.price_toman,
+            int(baseline),
+            round(change, 4),
+        )
+    else:
+        logger.debug(
+            "usdt_rate_notification_skipped symbol=%s reason=below_threshold current_price_toman=%s "
+            "baseline_price_toman=%s change_percent=%s",
+            rate.symbol,
+            rate.price_toman,
+            int(baseline),
+            round(change, 4),
+        )
     _upsert_state(
         rate,
         notified=should_notify,

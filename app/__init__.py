@@ -25,6 +25,8 @@ def _configure_application_logging() -> None:
     app_logger.addHandler(handler)
     # Avoid duplicate records if a process manager also configures the root logger.
     app_logger.propagate = False
+    logging.getLogger("app.nobitex").setLevel(logging.DEBUG)
+    logging.getLogger("app.currency_notifications").setLevel(logging.DEBUG)
 
 
 _configure_application_logging()

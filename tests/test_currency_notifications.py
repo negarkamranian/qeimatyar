@@ -1,4 +1,6 @@
 import asyncio
+import io
+import logging
 
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso
@@ -40,6 +42,11 @@ def _insert_accounts():
 def test_usdt_rate_change_creates_notifications_after_threshold():
     _insert_accounts()
     prices = iter([100_000, 101_200, 101_300])
+    log_stream = io.StringIO()
+    handler = logging.StreamHandler(log_stream)
+    logger = logging.getLogger("app.currency_notifications")
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
     async def fake_fetcher():
         return NobitexRate(
@@ -77,7 +84,11 @@ def test_usdt_rate_change_creates_notifications_after_threshold():
         assert all("USDT" in row["body"] for row in notifications)
         assert all("افزایش" in row["title"] for row in notifications)
         assert state["last_notified_price_toman"] == 101_200
+        logs = log_stream.getvalue()
+        assert "usdt_rate_checked" in logs
+        assert "usdt_rate_notification_created" in logs
     finally:
+        logger.removeHandler(handler)
         _cleanup()
 
 
@@ -94,3 +105,17 @@ def test_nobitex_orderbook_rate_prefers_last_trade_price():
     assert rate.symbol == "USDTIRT"
     assert rate.price_toman == 625_000
     assert rate.source == "lastTradePrice"
+
+
+def test_nobitex_orderbook_rate_falls_back_to_midpoint():
+    rate = _rate_from_orderbook(
+        {
+            "status": "ok",
+            "lastUpdate": 456,
+            "lastTradePrice": "",
+            "asks": [["626000", "10"]],
+            "bids": [["624000", "10"]],
+        }
+    )
+    assert rate.price_toman == 625_000
+    assert rate.source == "midpoint"

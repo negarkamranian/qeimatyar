@@ -11,6 +11,7 @@ def _bool(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     app_env: str = os.getenv("APP_ENV", "development")
+    log_level: str = os.getenv("APP_LOG_LEVEL", "INFO").upper()
     base_url: str = os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
     secret: str = os.getenv("APP_SECRET", "development-only-secret-change-me")
     database_path: str = os.getenv("DATABASE_PATH", "data/nerkhban.db")
@@ -32,6 +33,7 @@ class Settings:
     merchant_sync_hours: int = int(os.getenv("MERCHANT_SYNC_HOURS", "6"))
     usdt_notification_enabled: bool = _bool("USDT_NOTIFICATION_ENABLED", True)
     usdt_notification_percent: float = float(os.getenv("USDT_NOTIFICATION_PERCENT", "1"))
+    usdt_check_interval_minutes: int = int(os.getenv("USDT_CHECK_INTERVAL_MINUTES", "30"))
 
 
 settings = Settings()
