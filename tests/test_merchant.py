@@ -60,6 +60,32 @@ def _insert_accounts_and_products():
             VALUES(?,?,?,?,?,?,?)""",
             (OTHER_USER_ID, 7002, "محصول خصوصی دیگر", 1, 1, "{}", now_iso()),
         )
+        db.execute(
+            """INSERT INTO merchant_notifications
+            (user_id,kind,title,body,target_url,created_at)
+            VALUES(?,?,?,?,?,?)""",
+            (
+                USER_ID,
+                "price_opportunity",
+                "فرصت قیمت‌گذاری",
+                "یک محصول به بازبینی قیمت نیاز دارد.",
+                "/merchant",
+                now_iso(),
+            ),
+        )
+        db.execute(
+            """INSERT INTO merchant_notifications
+            (user_id,kind,title,body,target_url,created_at)
+            VALUES(?,?,?,?,?,?)""",
+            (
+                OTHER_USER_ID,
+                "private",
+                "اعلان خصوصی",
+                "این اعلان نباید دیده شود.",
+                "/merchant",
+                now_iso(),
+            ),
+        )
 
 
 def _cleanup():
@@ -97,6 +123,24 @@ def test_merchant_dashboard_is_private_and_range_is_tenant_scoped():
                 json={"min_price": 1, "max_price": 2},
             )
             assert forbidden.status_code == 404
+
+            notifications = client.get("/api/merchant/notifications")
+            assert notifications.status_code == 200
+            body = notifications.json()
+            assert body["unread_count"] == 1
+            assert [item["title"] for item in body["notifications"]] == [
+                "فرصت قیمت‌گذاری"
+            ]
+
+            notification_id = body["notifications"][0]["id"]
+            assert client.patch(
+                f"/api/merchant/notifications/{notification_id}/read"
+            ).status_code == 200
+            assert client.get("/api/merchant/notifications").json()["unread_count"] == 0
+
+            assert client.patch(
+                "/api/merchant/notifications/999999/read"
+            ).status_code == 404
     finally:
         _cleanup()
 

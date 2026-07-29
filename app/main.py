@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -70,6 +70,38 @@ class MarketSearchInput(BaseModel):
 class RangeOverrideInput(BaseModel):
     min_price: int | None = Field(default=None, gt=0)
     max_price: int | None = Field(default=None, gt=0)
+
+
+def create_merchant_notification(
+    user_id: int,
+    *,
+    kind: str,
+    title: str,
+    body: str,
+    target_url: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    with connection() as db:
+        db.execute(
+            """INSERT INTO merchant_notifications
+            (user_id,kind,title,body,target_url,metadata,created_at)
+            VALUES(?,?,?,?,?,?,?)""",
+            (
+                user_id,
+                kind,
+                title,
+                body,
+                target_url,
+                json.dumps(metadata or {}, ensure_ascii=False),
+                now_iso(),
+            ),
+        )
+
+
+def _notification_payload(notification: dict[str, Any]) -> dict[str, Any]:
+    notification["metadata"] = json.loads(notification.get("metadata") or "{}")
+    notification["read"] = bool(notification.get("read_at"))
+    return notification
 
 
 class SearchRateLimiter:
@@ -373,6 +405,14 @@ async def auth_callback(
             trace_id,
             _fingerprint(user.get("id")),
         )
+        create_merchant_notification(
+            int(user["id"]),
+            kind="booth_connected",
+            title="غرفه شما وصل شد",
+            body="قیمت‌یار محصولات غرفه را دریافت می‌کند و پیشنهادهای قیمت را در همین داشبورد نشان می‌دهد.",
+            target_url="/merchant",
+            metadata={"vendor_id": vendor["id"]},
+        )
     except (BasalamError, KeyError) as exc:
         logger.exception(
             "oauth_callback_failed trace_id=%s stage=%s elapsed_ms=%s "
@@ -477,6 +517,58 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
         },
         "products": products,
     }
+
+
+@app.get("/api/merchant/notifications")
+def merchant_notifications(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=50),
+) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    notifications = rows(
+        """SELECT id,kind,title,body,target_url,metadata,read_at,created_at
+        FROM merchant_notifications WHERE user_id=?
+        ORDER BY created_at DESC, id DESC LIMIT ?""",
+        (user_id, limit),
+    )
+    unread_count = rows(
+        """SELECT COUNT(*) AS count FROM merchant_notifications
+        WHERE user_id=? AND read_at IS NULL""",
+        (user_id,),
+    )[0]["count"]
+    return {
+        "unread_count": unread_count,
+        "notifications": [_notification_payload(item) for item in notifications],
+    }
+
+
+@app.patch("/api/merchant/notifications/{notification_id}/read")
+def mark_merchant_notification_read(
+    notification_id: int,
+    request: Request,
+) -> dict[str, bool]:
+    user_id = _merchant_user(request)
+    with connection() as db:
+        result = db.execute(
+            """UPDATE merchant_notifications SET read_at=COALESCE(read_at, ?)
+            WHERE user_id=? AND id=?""",
+            (now_iso(), user_id, notification_id),
+        )
+    if result.rowcount == 0:
+        raise HTTPException(404, "اعلان پیدا نشد.")
+    return {"ok": True}
+
+
+@app.post("/api/merchant/notifications/read-all")
+def mark_all_merchant_notifications_read(request: Request) -> dict[str, bool]:
+    user_id = _merchant_user(request)
+    with connection() as db:
+        db.execute(
+            """UPDATE merchant_notifications SET read_at=COALESCE(read_at, ?)
+            WHERE user_id=? AND read_at IS NULL""",
+            (now_iso(), user_id),
+        )
+    return {"ok": True}
 
 
 @app.post("/api/merchant/sync")
