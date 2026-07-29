@@ -8,13 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/merchant.css?v=20260729-2">
+  <link rel="stylesheet" href="/static/merchant.css?v=20260729-6">
 </head>
 <body>
   <header class="simple-header">
     <a class="brand" href="/">
       <span class="brand-mark">ق</span>
-      <span><strong>قیمت‌یار</strong><small>راهنمای قیمت غرفه</small></span>
+      <span><strong>قیمت‌یار</strong><small>پیشنهاد دهنده هوشمند قیمت</small></span>
     </a>
     <div class="account-actions">
       <a class="notification-button" href="/merchant/notifications" aria-label="اعلان‌ها">
@@ -41,18 +41,12 @@
 
     <div class="calm-note">
       <span>◎</span>
-      <p>پیشنهادها هر ۶ ساعت تازه می‌شوند. قیمت محصولات شما در باسلام بدون تأییدتان تغییر نمی‌کند.</p>
+      <p>.قیمت محصولات شما در باسلام بدون تأییدتان تغییر نمی‌کند</p>
     </div>
-
-    <section class="summary" aria-label="خلاصه غرفه">
-      <article><small>محصولات</small><strong id="summary-products">—</strong></article>
-      <article><small>دارای پیشنهاد</small><strong id="summary-estimated">—</strong></article>
-      <article><small>بازه شخصی</small><strong id="summary-customized">—</strong></article>
-    </section>
 
     <section class="products-section">
       <div class="section-title">
-        <div><h2>پیشنهاد قیمت محصولات</h2><p>برای دیدن محصولات مشابه روی نام محصول بزنید؛ «تنظیم» بازه شخصی را تغییر می‌دهد.</p></div>
+        <div><h2>پیشنهاد قیمت محصولات</h2><p>برای دیدن جزئیات قیمت و محصولات مشابه، روی محصول یا «تحلیل بازار» بزنید.</p></div>
         <input id="product-filter" type="search" placeholder="جست‌وجو بین محصولات">
       </div>
       <div id="sync-state" class="sync-state" hidden>
@@ -65,29 +59,7 @@
     </section>
   </main>
 
-  <dialog id="range-dialog">
-    <form id="range-form">
-      <button type="button" class="dialog-close" data-close>×</button>
-      <p class="eyebrow">بازه شخصی</p>
-      <h2 id="dialog-product-title"></h2>
-      <p class="dialog-copy">این تنظیم فقط پیشنهاد قیمت‌یار را شخصی می‌کند و قیمت باسلام را تغییر نمی‌دهد.</p>
-      <input id="range-product-id" type="hidden">
-      <div class="range-fields">
-        <label>حداقل قیمت <span>تومان</span><input id="range-min" type="number" min="1" required></label>
-        <label>حداکثر قیمت <span>تومان</span><input id="range-max" type="number" min="1" required></label>
-      </div>
-      <p id="range-error" class="range-error"></p>
-      <div class="dialog-actions">
-        <button type="button" id="reset-range" class="text-action">بازگشت به پیشنهاد بازار</button>
-        <div>
-          <button type="button" class="secondary-action" data-close>انصراف</button>
-          <button type="submit" class="primary-action">ذخیره</button>
-        </div>
-      </div>
-    </form>
-  </dialog>
-
   <div id="toast" role="status"></div>
-  <script src="/static/merchant.js?v=20260729-3" defer></script>
+  <script src="/static/merchant.js?v=20260729-6" defer></script>
 </body>
 </html>

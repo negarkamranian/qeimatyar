@@ -63,8 +63,7 @@ function productRow(product) {
     : `<span class="product-placeholder">◇</span>`;
   const hasEstimate = product.market_suggested && product.effective_min && product.effective_max;
   const range = hasEstimate
-    ? `<strong>${toman(product.effective_min)} تا ${toman(product.effective_max)}</strong>
-       ${product.customized ? '<span class="custom-badge">شخصی</span>' : ""}`
+    ? `<strong>${toman(product.market_low)} تا ${toman(product.market_high)}</strong>`
     : `<strong class="estimate-error">${escapeHtml(product.estimate_error || "در انتظار تحلیل")}</strong>`;
   const analysisUrl = escapeHtml(productAnalysisUrl(product));
   return `<article class="product-row" data-title="${escapeHtml(product.title.toLowerCase())}" data-analysis-url="${analysisUrl}">
@@ -76,7 +75,6 @@ function productRow(product) {
     <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
     <div class="product-actions">
       <a class="analysis-link" href="${analysisUrl}">تحلیل بازار</a>
-      <button class="edit-range" data-edit="${product.product_id}" ${hasEstimate ? "" : "disabled"}>تنظیم</button>
     </div>
   </article>`;
 }
@@ -91,9 +89,6 @@ async function loadDashboard() {
   const data = await api("/api/merchant/dashboard");
   state.products = data.products;
   state.status = data.account.sync_status;
-  document.querySelector("#summary-products").textContent = fa(data.summary.products);
-  document.querySelector("#summary-estimated").textContent = fa(data.summary.estimated);
-  document.querySelector("#summary-customized").textContent = fa(data.summary.customized);
   const running = ["running", "queued"].includes(state.status);
   document.querySelector("#sync-state").hidden = !running;
   document.querySelector("#sync-button").disabled = running;
@@ -116,53 +111,12 @@ async function startSync() {
     toast(error.message);
   }
 }
-function openRange(productId) {
-  const product = state.products.find(item => item.product_id === Number(productId));
-  if (!product) return;
-  document.querySelector("#range-product-id").value = product.product_id;
-  document.querySelector("#dialog-product-title").textContent = product.title;
-  document.querySelector("#range-min").value = product.effective_min;
-  document.querySelector("#range-max").value = product.effective_max;
-  document.querySelector("#range-error").textContent = "";
-  document.querySelector("#range-dialog").showModal();
-}
-async function saveRange(minPrice, maxPrice) {
-  const productId = document.querySelector("#range-product-id").value;
-  await api(`/api/merchant/products/${productId}/range`, {
-    method: "PATCH",
-    body: JSON.stringify({ min_price: minPrice, max_price: maxPrice }),
-  });
-  document.querySelector("#range-dialog").close();
-  toast(minPrice === null ? "بازه بازار بازگردانده شد." : "بازه شخصی ذخیره شد.");
-  await loadDashboard();
-}
 document.querySelector("#sync-button").addEventListener("click", startSync);
 document.querySelector("#product-filter").addEventListener("input", renderProducts);
 document.addEventListener("click", event => {
-  const edit = event.target.closest("[data-edit]");
-  if (edit) {
-    openRange(edit.dataset.edit);
-    return;
-  }
-  if (event.target.closest("[data-close]")) document.querySelector("#range-dialog").close();
   const row = event.target.closest(".product-row[data-analysis-url]");
   if (row && !event.target.closest("a, button")) {
     window.location.href = row.dataset.analysisUrl;
   }
-});
-document.querySelector("#range-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  const min = Number(document.querySelector("#range-min").value);
-  const max = Number(document.querySelector("#range-max").value);
-  if (min > max) {
-    document.querySelector("#range-error").textContent = "حداقل قیمت نمی‌تواند از حداکثر بیشتر باشد.";
-    return;
-  }
-  try { await saveRange(min, max); }
-  catch (error) { document.querySelector("#range-error").textContent = error.message; }
-});
-document.querySelector("#reset-range").addEventListener("click", async () => {
-  try { await saveRange(null, null); }
-  catch (error) { document.querySelector("#range-error").textContent = error.message; }
 });
 Promise.all([loadDashboard(), loadNotifications()]).catch(error => toast(error.message));
