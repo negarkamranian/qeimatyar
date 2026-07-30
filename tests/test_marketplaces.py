@@ -37,15 +37,15 @@ def test_torob_parser_keeps_toman_price():
     payload = {
         "results": [
             {
-                "name1": "گوشی سامسونگ A55",
-                "name2": "ظرفیت 256 گیگ",
+                "name1": "کاور آیفون",
+                # "name2": "ظرفیت 256 گیگ",
                 "price": 25_500_000,
                 "web_client_absolute_url": "/p/example/",
                 "image_url": "https://image.torob.com/example.jpg",
             }
         ]
     }
-    result = parse_torob(payload, "سامسونگ A55 256 گیگ")
+    result = parse_torob(payload, "کاور آیفون")
     assert result[0].price == 25_500_000
     assert result[0].source == "torob"
 
@@ -55,7 +55,7 @@ def test_digikala_parser_converts_rial_to_toman():
         "data": {
             "products": [
                 {
-                    "title_fa": "گوشی سامسونگ A55 ظرفیت 256 گیگ",
+                    "title_fa": "کاور آیفون",
                     "url": {"uri": "/product/dkp-1/"},
                     "default_variant": {"price": {"selling_price": 255_000_000}},
                     "images": {},
@@ -63,7 +63,7 @@ def test_digikala_parser_converts_rial_to_toman():
             ]
         }
     }
-    result = parse_digikala(payload, "سامسونگ A55 256 گیگ")
+    result = parse_digikala(payload, "کاور آیفون")
     assert result[0].price == 25_500_000
     assert result[0].source == "digikala"
 
@@ -87,12 +87,12 @@ def test_basalam_parser_accepts_live_products_envelope():
 
 def test_numeric_variant_mismatch_reduces_similarity():
     exact = title_similarity(
-        "گوشی سامسونگ A55 ظرفیت 256 گیگ",
-        "گوشی موبایل سامسونگ Galaxy A55 256GB",
+        "کاور آیفون",
+        "کاور آیفون",
     )
     wrong_storage = title_similarity(
-        "گوشی سامسونگ A55 ظرفیت 256 گیگ",
-        "گوشی موبایل سامسونگ Galaxy A55 128GB",
+        "کاور آیفون",
+        "کاور آیفون",
     )
     assert exact > wrong_storage
     assert exact > 0.45

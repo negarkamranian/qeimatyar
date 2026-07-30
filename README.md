@@ -74,13 +74,13 @@ uvicorn app.main:app --reload
 POST /api/market/analyze
 Content-Type: application/json
 
-{"product_name": "گوشی سامسونگ A55 ظرفیت 256 گیگ"}
+{"product_name": "کاور آیفون"}
 ```
 
 لینک نتیجه را می‌توان با پارامتر `q` به اشتراک گذاشت:
 
 ```text
-https://YOUR_DOMAIN/?q=گوشی سامسونگ A55 ظرفیت 256 گیگ
+https://YOUR_DOMAIN/?q=کاور آیفون
 ```
 
 اجرای تست:

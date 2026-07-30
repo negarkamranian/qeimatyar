@@ -10,8 +10,8 @@ from app.product_input import (
 
 
 def test_plain_product_name_is_returned_unchanged():
-    query, from_url = asyncio.run(resolve_product_query("  گوشی سامسونگ A55  "))
-    assert query == "گوشی سامسونگ A55"
+    query, from_url = asyncio.run(resolve_product_query("  کاور آیفون  "))
+    assert query == "کاور آیفون"
     assert not from_url
 
 
@@ -19,7 +19,7 @@ def test_product_title_is_read_from_safe_marketplace_link(monkeypatch):
     async def fake_html(_):
         return """
         <html><head>
-          <meta property="og:title" content="گوشی سامسونگ A55 | دیجی‌کالا">
+          <meta property="og:title" content="کاور آیفون | دیجی‌کالا">
         </head></html>
         """
 
@@ -27,7 +27,7 @@ def test_product_title_is_read_from_safe_marketplace_link(monkeypatch):
     query, from_url = asyncio.run(
         resolve_product_query("https://www.digikala.com/product/dkp-123/a55/")
     )
-    assert query == "گوشی سامسونگ A55"
+    assert query == "کاور آیفون"
     assert from_url
 
 
