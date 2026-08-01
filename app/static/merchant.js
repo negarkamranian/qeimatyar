@@ -1,4 +1,12 @@
-const state = { products: [], notifications: [], status: "idle", pollTimer: null };
+const state = {
+  products: [],
+  notifications: [],
+  status: "idle",
+  pollTimer: null,
+  notificationPollTimer: null,
+  notificationLoaded: false,
+  toastTimer: null,
+};
 const toman = value => new Intl.NumberFormat("fa-IR").format(value || 0);
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
 
@@ -13,11 +21,22 @@ function safeImage(value) {
     return url.protocol === "https:" ? escapeHtml(url.href) : "";
   } catch { return ""; }
 }
-function toast(message) {
+function toast(message, options = {}) {
   const node = document.querySelector("#toast");
-  node.textContent = message;
+  const title = options.title || "اعلان";
+  const kind = options.kind || "info";
+  node.innerHTML = `
+    <div class="toast-card ${kind}">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(message)}</span>
+    </div>
+  `;
   node.classList.add("show");
-  setTimeout(() => node.classList.remove("show"), 2600);
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => {
+    node.classList.remove("show");
+    node.innerHTML = "";
+  }, options.timeout || 4200);
 }
 async function api(url, options = {}) {
   const response = await fetch(url, {
@@ -51,9 +70,26 @@ function renderNotifications(unreadCount = 0) {
   badge.hidden = unreadCount <= 0;
   badge.textContent = fa(unreadCount);
 }
-async function loadNotifications() {
+function maybeShowNotificationToast(nextNotifications, unreadCount) {
+  if (!state.notificationLoaded || !nextNotifications.length) return;
+  const previousIds = new Set(state.notifications.map(notification => notification.id));
+  const newNotifications = nextNotifications.filter(notification => !previousIds.has(notification.id));
+  const newestNotification = newNotifications[0] || nextNotifications.find(notification => !notification.read) || null;
+  if (!newestNotification) return;
+  if (unreadCount <= state.notifications.filter(notification => !notification.read).length) return;
+  const body = newestNotification.body || newestNotification.title || "شما یک اعلان جدید دارید.";
+  toast(body, { title: newestNotification.title || "اعلان جدید", kind: "notification" });
+}
+
+async function loadNotifications(options = {}) {
   const data = await api("/api/merchant/notifications");
-  state.notifications = data.notifications;
+  const nextNotifications = data.notifications;
+  if (state.notificationLoaded) {
+    maybeShowNotificationToast(nextNotifications, data.unread_count);
+  } else {
+    state.notificationLoaded = true;
+  }
+  state.notifications = nextNotifications;
   renderNotifications(data.unread_count);
 }
 function productRow(product) {
@@ -119,4 +155,13 @@ document.addEventListener("click", event => {
     window.location.href = row.dataset.analysisUrl;
   }
 });
-Promise.all([loadDashboard(), loadNotifications()]).catch(error => toast(error.message));
+function startNotificationPolling() {
+  if (state.notificationPollTimer) return;
+  state.notificationPollTimer = window.setInterval(() => {
+    loadNotifications({ showToast: true }).catch(error => toast(error.message));
+  }, 10000);
+}
+
+Promise.all([loadDashboard(), loadNotifications()]).then(() => {
+  startNotificationPolling();
+}).catch(error => toast(error.message));
