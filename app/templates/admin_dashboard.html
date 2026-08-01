@@ -7,24 +7,30 @@
   <link rel="stylesheet" href="/static/app.css?v=20260729-4">
   <style>
     body { font-family: Vazirmatn, sans-serif; background: #f3f7fb; color: #132238; }
-    .wrap { max-width: 760px; margin: 40px auto; background: white; border-radius: 18px; padding: 28px; box-shadow: 0 16px 40px rgba(0,0,0,.08); }
+    .wrap { max-width: 980px; margin: 40px auto; background: white; border-radius: 20px; padding: 28px; box-shadow: 0 16px 40px rgba(0,0,0,.08); }
     h1 { margin-top: 0; }
+    h2 { margin: 0 0 8px; font-size: 1.05rem; }
     form { display: grid; gap: 14px; }
     .row { display: grid; gap: 8px; }
     label { font-weight: 600; }
     input, select, button { font: inherit; padding: 12px; border-radius: 10px; border: 1px solid #dbe4ee; }
     button { background: #0f766e; color: white; border: none; cursor: pointer; }
     .hint { color: #5b6b7f; font-size: .95rem; }
-    .status-box { margin-top: 12px; padding: 12px 14px; border: 1px solid #dbe4ee; border-radius: 10px; background: #f8fbff; color: #4b5d6f; font-size: .95rem; }
+    .status-box { margin-top: 12px; padding: 12px 14px; border: 1px solid #dbe4ee; border-radius: 12px; background: #f8fbff; color: #4b5d6f; font-size: .95rem; }
     .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0 20px; }
-    .summary-card { padding: 14px; border: 1px solid #e7eef5; border-radius: 12px; background: linear-gradient(135deg, #f8fbff 0%, #f1f6fb 100%); }
+    .summary-card { padding: 14px; border: 1px solid #e7eef5; border-radius: 14px; background: linear-gradient(135deg, #f8fbff 0%, #f1f6fb 100%); }
     .summary-card strong { display: block; font-size: 1.2rem; margin-top: 4px; }
-    .table-wrap { overflow-x: auto; margin-top: 16px; }
+    .panel-card { margin-top: 18px; padding: 16px; border: 1px solid #e7eef5; border-radius: 16px; background: #fff; }
+    .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: .95rem; }
     th, td { padding: 10px 8px; border-bottom: 1px solid #e7eef5; text-align: right; }
     th { color: #5b6b7f; font-weight: 700; }
     .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: .8rem; background: #e8f6ef; color: #166c50; }
     .badge.inactive { background: #f3f4f6; color: #6b7280; }
+    .settings-grid { display: grid; gap: 14px; }
+    .danger-button { background: #b45309; }
+    .subtle { color: #6b7280; font-size: .85rem; }
   </style>
 </head>
 <body>
@@ -41,56 +47,78 @@
         <div class="hint">کاربران فعال</div>
         <strong>{{ active_users }}</strong>
       </div>
+      <div class="summary-card">
+        <div class="hint">محیط اجرا</div>
+        <strong>{{ settings.app_env }}</strong>
+      </div>
+      <div class="summary-card">
+        <div class="hint">وضعیت اعلان‌ها</div>
+        <strong>{{ 'فعال' if settings.usdt_notification_enabled else 'غیرفعال' }}</strong>
+      </div>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>نام غرفه</th>
-            <th>کاربر</th>
-            <th>وضعیت</th>
-            <th>آخرین همگام‌سازی</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for user in users %}
-          <tr>
-            <td>{{ user.vendor_title }}</td>
-            <td>{{ user.user_name or '-' }}</td>
-            <td><span class="badge {% if not user.is_active %}inactive{% endif %}">{{ 'در حال کار' if user.is_active else 'غیرفعال' }}</span></td>
-            <td>{{ user.last_synced_at or 'هنوز' }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="4" class="hint">هنوز کاربری متصل نشده است.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <form method="post" action="/admin/notifications/clear" style="margin-top: 14px;">
-      <button type="submit" style="background: #b45309;">پاک کردن همه اعلان‌ها</button>
-    </form>
-    <form method="post" action="/admin/settings">
-      <div class="row">
-        <label for="merchant_sync_hours">MERCHANT_SYNC_HOURS</label>
-        <input id="merchant_sync_hours" name="merchant_sync_hours" type="number" min="1" value="{{ settings.merchant_sync_hours }}">
+
+    <section class="panel-card">
+      <div class="card-head">
+        <h2>کاربران متصل</h2>
+        <span class="subtle">نمایش وضعیت و آخرین همگام‌سازی</span>
       </div>
-      <div class="row">
-        <label for="usdt_notification_enabled">USDT_NOTIFICATION_ENABLED</label>
-        <select id="usdt_notification_enabled" name="usdt_notification_enabled">
-          <option value="true" {% if settings.usdt_notification_enabled %}selected{% endif %}>true</option>
-          <option value="false" {% if not settings.usdt_notification_enabled %}selected{% endif %}>false</option>
-        </select>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>نام غرفه</th>
+              <th>کاربر</th>
+              <th>وضعیت</th>
+              <th>آخرین همگام‌سازی</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for user in users %}
+            <tr>
+              <td>{{ user.vendor_title }}</td>
+              <td>{{ user.user_name or '-' }}</td>
+              <td><span class="badge {% if not user.is_active %}inactive{% endif %}">{{ 'در حال کار' if user.is_active else 'غیرفعال' }}</span></td>
+              <td>{{ user.last_synced_at or 'هنوز' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="hint">هنوز کاربری متصل نشده است.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      <div class="row">
-        <label for="usdt_notification_percent">USDT_NOTIFICATION_PERCENT</label>
-        <input id="usdt_notification_percent" name="usdt_notification_percent" type="number" step="0.1" value="{{ settings.usdt_notification_percent }}">
+    </section>
+
+    <section class="panel-card">
+      <div class="card-head">
+        <h2>تنظیمات پرکاربرد</h2>
+        <span class="subtle">این مقادیر در فایل تنظیمات و .env به‌روزرسانی می‌شوند</span>
       </div>
-      <div class="row">
-        <label for="usdt_check_interval_minutes">USDT_CHECK_INTERVAL_MINUTES</label>
-        <input id="usdt_check_interval_minutes" name="usdt_check_interval_minutes" type="number" min="1" value="{{ settings.usdt_check_interval_minutes }}">
-      </div>
-      <button type="submit">ذخیره تنظیمات</button>
-    </form>
+      <form method="post" action="/admin/notifications/clear">
+        <button type="submit" class="danger-button">پاک کردن همه اعلان‌ها</button>
+      </form>
+      <form method="post" action="/admin/settings" class="settings-grid">
+        <div class="row">
+          <label for="merchant_sync_hours">MERCHANT_SYNC_HOURS</label>
+          <input id="merchant_sync_hours" name="merchant_sync_hours" type="number" min="1" value="{{ settings.merchant_sync_hours }}">
+        </div>
+        <div class="row">
+          <label for="usdt_notification_enabled">USDT_NOTIFICATION_ENABLED</label>
+          <select id="usdt_notification_enabled" name="usdt_notification_enabled">
+            <option value="true" {% if settings.usdt_notification_enabled %}selected{% endif %}>true</option>
+            <option value="false" {% if not settings.usdt_notification_enabled %}selected{% endif %}>false</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="usdt_notification_percent">USDT_NOTIFICATION_PERCENT</label>
+          <input id="usdt_notification_percent" name="usdt_notification_percent" type="number" step="0.1" value="{{ settings.usdt_notification_percent }}">
+        </div>
+        <div class="row">
+          <label for="usdt_check_interval_minutes">USDT_CHECK_INTERVAL_MINUTES</label>
+          <input id="usdt_check_interval_minutes" name="usdt_check_interval_minutes" type="number" min="1" value="{{ settings.usdt_check_interval_minutes }}">
+        </div>
+        <button type="submit">ذخیره تنظیمات</button>
+      </form>
+    </section>
     <p class="hint">فایل تنظیمات: {{ admin_settings_file }}</p>
   </main>
 </body>
