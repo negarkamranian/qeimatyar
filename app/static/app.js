@@ -203,7 +203,9 @@ function updateSelectedPrice() {
   const demandChange = elasticity.demand_change_pct || 0;
   const revenueChange = elasticity.revenue_change_pct || 0;
   signal.style.setProperty("--signal-position", `${position}%`);
-  document.querySelector("#selected-price").textContent = toman(value);
+  const selectedPriceEl = document.querySelector("#selected-price");
+  selectedPriceEl.textContent = toman(value);
+  selectedPriceEl.style.color = value === recommended ? "var(--green)" : "var(--ink)";
 
   signal.classList.remove("quick", "fair", "patient");
   if (currentSliderBands && position < currentSliderBands.quickStop) {
@@ -221,6 +223,26 @@ function updateSelectedPrice() {
     document.querySelector("#signal-title").textContent = "فروش صبورانه";
     document.querySelector("#signal-copy").textContent = "حاشیه بیشتری دارید، اما ممکن است برای فروش زمان بیشتری لازم باشد.";
     slider.style.setProperty("--thumb", "var(--red)");
+  }
+
+  const priceRisk = document.querySelector("#price-risk");
+  const riskTitle = document.querySelector("#risk-title");
+  const riskCopy = document.querySelector("#risk-copy");
+  priceRisk.classList.remove("neutral", "warning", "danger");
+  if (value === recommended) {
+    priceRisk.classList.add("neutral");
+    riskTitle.textContent = "قیمت پیشنهادی بهینه";
+    riskCopy.textContent = "شما دقیقاً روی قیمت پیشنهادی قیمت‌یار هستید. در این نقطه، تعادل مناسبی بین تقاضا و درآمد حفظ می‌شود.";
+  } else if (value > recommended) {
+    const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
+    priceRisk.classList.add(severity);
+    riskTitle.textContent = "قیمت بالاتر از پیشنهادی";
+    riskCopy.textContent = `با این قیمت، حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از درآمد ممکن از دست می‌دهید.`;
+  } else {
+    const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
+    priceRisk.classList.add(severity);
+    riskTitle.textContent = "قیمت پایین‌تر از پیشنهادی";
+    riskCopy.textContent = `با این قیمت، احتمال می‌رود حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از درآمد کمتر شود.`;
   }
 
   const elasticityText = document.querySelector("#elasticity-summary");

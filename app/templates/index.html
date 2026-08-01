@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20260729-4">
+  <link rel="stylesheet" href="/static/app.css?v=20260801-1">
 </head>
 <body>
   <header class="site-header">
@@ -137,6 +137,10 @@
           </div>
           <button id="use-recommended">انتخاب قیمت پیشنهادی</button>
         </div>
+        <div id="price-risk" class="price-risk neutral" role="status" aria-live="polite">
+          <strong id="risk-title">قیمت در محدوده‌ی پیشنهادی</strong>
+          <p id="risk-copy">در این محدوده، اثر کشش قیمت کم است و پیشنهاد بازار منطقی به‌نظر می‌رسد.</p>
+        </div>
         <p id="elasticity-summary" class="helper-text">قیمت پیشنهادی بازار به‌نظر منطقی است و تاثیر کشش قیمتی در این محدوده محدود است.</p>
       </div>
 
@@ -185,6 +189,6 @@
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260729-4" defer></script>
+  <script src="/static/app.js?v=20260801-1" defer></script>
 </body>
 </html>
