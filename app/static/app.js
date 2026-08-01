@@ -237,12 +237,12 @@ function updateSelectedPrice() {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
     riskTitle.textContent = "قیمت بالاتر از پیشنهادی";
-    riskCopy.textContent = `با این قیمت، حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از درآمد ممکن از دست می‌دهید.`;
+    riskCopy.textContent = `داری حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از کل درآمد رو از دست میدی.`;
   } else {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
     riskTitle.textContent = "قیمت پایین‌تر از پیشنهادی";
-    riskCopy.textContent = `با این قیمت، احتمال می‌رود حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از درآمد کمتر شود.`;
+    riskCopy.textContent = `داری حدود ${Math.abs(distancePct).toFixed(0)}٪ قیمت رو پایین میذاری که ${Math.abs(revenueChange).toFixed(0)}٪ از کل درآمد رو کم میکنه.`;
   }
 
   const elasticityText = document.querySelector("#elasticity-summary");
