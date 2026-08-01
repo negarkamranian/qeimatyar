@@ -262,21 +262,24 @@ function updateSelectedPrice() {
   const priceRisk = document.querySelector("#price-risk");
   const riskTitle = document.querySelector("#risk-title");
   const riskCopy = document.querySelector("#risk-copy");
-  priceRisk.classList.remove("neutral", "warning", "danger");
+  priceRisk.classList.remove("neutral", "good", "warning", "danger");
   if (value === recommended) {
-    priceRisk.classList.add("neutral");
+    priceRisk.classList.add("good");
     riskTitle.textContent = "قیمت پیشنهادی بهینه";
     riskCopy.textContent = "شما دقیقاً روی قیمت پیشنهادی قیمت‌یار هستید. در این نقطه، تعادل مناسبی بین تقاضا و درآمد حفظ می‌شود.";
+    selectedPriceEl.style.color = "var(--green)";
   } else if (value > recommended) {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
     riskTitle.textContent = "قیمت بالاتر از پیشنهادی";
     riskCopy.textContent = `داری حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا رو از دست میدی.`;
+    selectedPriceEl.style.color = severity === "danger" ? "var(--red)" : "var(--orange)";
   } else {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
     riskTitle.textContent = "قیمت پایین‌تر از پیشنهادی";
     riskCopy.textContent = `داری حدود ${Math.abs(distancePct).toFixed(0)}٪ قیمت رو پایین میذاری که ${Math.abs(revenueChange).toFixed(0)}٪ از کل درآمد رو کم میکنه.`;
+    selectedPriceEl.style.color = severity === "danger" ? "var(--red)" : "var(--orange)";
   }
 }
 

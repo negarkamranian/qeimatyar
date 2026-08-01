@@ -27,7 +27,7 @@ def _notification_text(change_percent: float, previous: int, current: int) -> tu
     amount = abs(change_percent)
     title = f"سطح قیمت‌ها در بازار تغییر کرده"
     body = (
-        f"نرخ USDT نسبت به آخرین هشدار {_fa_number(amount)}٪ {direction} داشته است. "
+        f"نرخ ارز نسبت به آخرین هشدار {_fa_number(amount)}٪ {direction} داشته است. "
         f"با توجه به تغییر سطح قیمت‌ها در بازار، بهتر است قیمت محصولاتت را برای افزایش یا کاهش بازنگری کنی. "
         f"نرخ قبلی: {previous:,} تومان، نرخ جدید: {current:,} تومان."
     )

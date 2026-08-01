@@ -207,6 +207,7 @@ h1, h2, p { margin-top: 0; }
 
 .price-risk { margin: 0; padding: 12px 28px 18px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.7; transition: background .2s, color .2s; }
 .price-risk.neutral { color: var(--muted); background: #fcfdfc; }
+.price-risk.good { color: var(--green); background: #f0faf6; }
 .price-risk.warning { color: var(--orange); background: #fffaf4; }
 .price-risk.danger { color: var(--red); background: #fff0f2; }
 .price-risk strong { display: block; margin-bottom: 2px; font-size: 12px; }
