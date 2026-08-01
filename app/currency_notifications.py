@@ -25,10 +25,10 @@ def _notification_text(change_percent: float, previous: int, current: int) -> tu
     direction = "افزایش" if change_percent > 0 else "کاهش"
     action = "افزایش بدهی" if change_percent > 0 else "کاهش بدهی"
     amount = abs(change_percent)
-    title = f"تغییر {direction}ی نرخ تتر"
+    title = f"سطح قیمت‌ها در بازار تغییر کرده"
     body = (
         f"نرخ USDT نسبت به آخرین هشدار {_fa_number(amount)}٪ {direction} داشته است. "
-        f"با توجه به بازار ارز، بهتر است قیمت محصولاتت را حدود {_fa_number(amount)}٪ {action}. "
+        f"با توجه به تغییر سطح قیمت‌ها در بازار، بهتر است قیمت محصولاتت را برای افزایش یا کاهش بازنگری کنی. "
         f"نرخ قبلی: {previous:,} تومان، نرخ جدید: {current:,} تومان."
     )
     return title, body

@@ -1,0 +1,52 @@
+{% extends "admin/base.html" %}
+{% block title %}جزئیات کاربر — پنل مدیریت{% endblock %}
+{% block content %}
+<a href="/admin/users" class="back-link">→ بازگشت به لیست کاربران</a>
+<h1>جزئیات کاربر</h1>
+<div class="card">
+  <h2>اطلاعات حساب</h2>
+  <table>
+    <tr><th>شناسه کاربر</th><td>{{ account.user_id }}</td></tr>
+    <tr><th>نام غرفه</th><td>{{ account.vendor_title }}</td></tr>
+    <tr><th>نام کاربری</th><td>{{ account.user_name or '-' }}</td></tr>
+    <tr><th>شناسه فروشنده</th><td>{{ account.vendor_id }}</td></tr>
+    <tr><th>وضعیت همگام‌سازی</th><td><span class="badge {% if account.sync_status != 'running' and account.sync_status != 'queued' %}inactive{% endif %}">{{ account.sync_status }}</span></td></tr>
+    <tr><th>آخرین همگام‌سازی</th><td>{{ account.last_synced_at or 'هنوز' }}</td></tr>
+    <tr><th>اتصال شده</th><td>{{ account.connected_at or '-' }}</td></tr>
+    <tr><th>خطای همگام‌سازی</th><td>{{ account.sync_error or '—' }}</td></tr>
+  </table>
+</div>
+<div class="card">
+  <h2>محصولات ({{ products|length }})</h2>
+  {% if products %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>عنوان</th>
+          <th>قیمت فعلی</th>
+          <th>موجودی</th>
+          <th>پیشنهاد بازار</th>
+          <th>بازه پیشنهادی</th>
+          <th>همگام‌سازی</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %}
+        <tr>
+          <td>{{ product.title }}</td>
+          <td>{{ product.current_price:, }} تومان</td>
+          <td>{{ product.stock }}</td>
+          <td>{{ product.market_suggested or '-' }}</td>
+          <td>{{ product.market_low or '-' }} – {{ product.market_high or '-' }}</td>
+          <td>{{ product.synced_at or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="hint">هنوز محصولی برای این کاربر ثبت نشده است.</p>
+  {% endif %}
+</div>
+{% endblock %}

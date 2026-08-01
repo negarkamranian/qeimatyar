@@ -123,6 +123,34 @@ def admin_users_page(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/admin/users/{user_id}", response_class=HTMLResponse)
+def admin_user_detail(request: Request, user_id: int) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    account = rows(
+        """SELECT * FROM accounts WHERE user_id=?""",
+        (user_id,),
+    )
+    if not account:
+        raise HTTPException(404, "کاربر پیدا نشد.")
+    products = rows(
+        """SELECT * FROM merchant_products WHERE user_id=?
+        ORDER BY synced_at DESC""",
+        (user_id,),
+    )
+    for product in products:
+        product["source_counts"] = json.loads(product.get("source_counts") or "{}")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/user_detail.html",
+        context={
+            **_admin_context(request, "users"),
+            "account": account[0],
+            "products": products,
+        },
+    )
+
+
 @app.get("/admin/notifications", response_class=HTMLResponse)
 def admin_notifications_page(request: Request) -> HTMLResponse:
     if not _admin_session(request):

@@ -82,7 +82,7 @@ def test_usdt_rate_change_creates_notifications_after_threshold():
         assert len(notifications) == 2
         assert {row["kind"] for row in notifications} == {"currency_rate_change"}
         assert all("USDT" in row["body"] for row in notifications)
-        assert all("افزایش" in row["title"] for row in notifications)
+        assert all("سطح قیمت‌ها" in row["title"] for row in notifications)
         assert state["last_notified_price_toman"] == 101_200
         logs = log_stream.getvalue()
         assert "usdt_rate_checked" in logs

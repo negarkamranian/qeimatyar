@@ -237,7 +237,6 @@ function updateSelectedPrice() {
   signal.style.setProperty("--signal-position", `${position}%`);
   const selectedPriceEl = document.querySelector("#selected-price");
   selectedPriceEl.textContent = toman(value);
-  selectedPriceEl.style.color = value === recommended ? "var(--green)" : "var(--ink)";
 
   signal.classList.remove("quick", "fair", "patient");
   if (currentSliderBands && position < currentSliderBands.quickStop) {
@@ -245,16 +244,19 @@ function updateSelectedPrice() {
     document.querySelector("#signal-title").textContent = "فروش سریع‌تر";
     document.querySelector("#signal-copy").textContent = "قیمت شما در بخش رقابتی بازار است و احتمال فروش سریع‌تر می‌شود.";
     slider.style.setProperty("--thumb", "var(--blue)");
+    selectedPriceEl.style.color = "var(--blue)";
   } else if (currentSliderBands && position <= currentSliderBands.patientStart) {
     signal.classList.add("fair");
     document.querySelector("#signal-title").textContent = "قیمت منصفانه";
     document.querySelector("#signal-copy").textContent = "در مرکز قیمت‌های مشابه بازار قرار دارید.";
     slider.style.setProperty("--thumb", "var(--teal)");
+    selectedPriceEl.style.color = value === recommended ? "var(--green)" : "var(--ink)";
   } else {
     signal.classList.add("patient");
     document.querySelector("#signal-title").textContent = "فروش صبورانه";
     document.querySelector("#signal-copy").textContent = "حاشیه بیشتری دارید، اما ممکن است برای فروش زمان بیشتری لازم باشد.";
     slider.style.setProperty("--thumb", "var(--red)");
+    selectedPriceEl.style.color = "var(--red)";
   }
 
   const priceRisk = document.querySelector("#price-risk");
@@ -269,26 +271,12 @@ function updateSelectedPrice() {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
     riskTitle.textContent = "قیمت بالاتر از پیشنهادی";
-    riskCopy.textContent = `داری حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از کل درآمد رو از دست میدی.`;
+    riskCopy.textContent = `داری حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا رو از دست میدی.`;
   } else {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
     riskTitle.textContent = "قیمت پایین‌تر از پیشنهادی";
     riskCopy.textContent = `داری حدود ${Math.abs(distancePct).toFixed(0)}٪ قیمت رو پایین میذاری که ${Math.abs(revenueChange).toFixed(0)}٪ از کل درآمد رو کم میکنه.`;
-  }
-
-  const elasticityText = document.querySelector("#elasticity-summary");
-  if (elasticityText) {
-    if (value > recommended) {
-      elasticityText.textContent = `با این قیمت، حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از درآمد ممکن است از دست برود.`;
-      elasticityText.className = "helper-text";
-    } else if (value < recommended) {
-      elasticityText.textContent = `با این قیمت، احتمال می‌رود حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از درآمد کمتر شود.`;
-      elasticityText.className = "helper-text";
-    } else {
-      elasticityText.textContent = `قیمت پیشنهادی بازار به‌نظر منطقی است و تاثیر کشش قیمتی در این محدوده محدود است.`;
-      elasticityText.className = "helper-text";
-    }
   }
 }
 
@@ -308,7 +296,12 @@ document.querySelectorAll("[data-example]").forEach(button => {
 
 document.querySelector("#price-slider").addEventListener("input", updateSelectedPrice);
 document.querySelector("#use-recommended").addEventListener("click", () => {
-  document.querySelector("#price-slider").value = currentAnalysis.recommended;
+  const slider = document.querySelector("#price-slider");
+  const recommended = Number(currentAnalysis.recommended);
+  const step = Number(slider.step);
+  const min = Number(slider.min);
+  const snapped = Math.round((recommended - min) / step) * step + min;
+  slider.value = snapped;
   document.querySelector("#selected-price-label").textContent = "قیمت انتخابی شما";
   updateSelectedPrice();
 });
