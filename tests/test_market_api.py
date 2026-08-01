@@ -33,6 +33,7 @@ def test_market_analysis_endpoint(monkeypatch):
     body = response.json()
     assert body["analysis"]["recommended"] == 495_000
     assert body["analysis"]["sample_size"] == 4
+    assert body["analysis"]["elasticity"]["elasticity"] >= 0.7
     assert len(body["sources"]) == 3
 
 

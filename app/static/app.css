@@ -202,6 +202,7 @@ h1, h2, p { margin-top: 0; }
 .recommendation strong { color: var(--green); font-size: 19px; }
 .recommendation span { color: var(--muted); font-size: 9px; }
 .recommendation button { border: 0; background: var(--green); color: white; padding: 9px 13px; border-radius: 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
+.helper-text { margin: 0; padding: 12px 28px 20px; color: var(--muted); font-size: 11px; line-height: 1.7; border-top: 1px solid var(--line); background: #fcfdfc; }
 
 .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0 34px; }
 .summary-grid article { border: 1px solid var(--line); border-radius: 11px; padding: 14px 16px; display: flex; gap: 10px; align-items: center; background: #fff; }

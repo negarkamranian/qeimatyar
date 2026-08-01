@@ -333,6 +333,42 @@ def _round_toman(value: float) -> int:
     return max(step, int(round(value / step) * step))
 
 
+def _estimate_elasticity(price: int, recommended: int, low: int, high: int) -> dict[str, float]:
+    if not recommended or recommended <= 0:
+        return {"demand_change_pct": 0.0, "revenue_change_pct": 0.0, "elasticity": 0.0}
+    spread = max(high - low, 1)
+    distance_pct = ((price - recommended) / max(recommended, 1)) * 100
+    elasticity = 1.0
+    if abs(distance_pct) < 3:
+        elasticity = 0.7
+    elif abs(distance_pct) < 8:
+        elasticity = 1.1
+    elif abs(distance_pct) < 15:
+        elasticity = 1.4
+    else:
+        elasticity = 1.8
+
+    if price > recommended:
+        demand_change_pct = -min(35.0, abs(distance_pct) * 0.35 * elasticity)
+        revenue_change_pct = demand_change_pct + (distance_pct * 0.0)
+    else:
+        demand_change_pct = min(25.0, abs(distance_pct) * 0.25 * elasticity)
+        revenue_change_pct = -min(35.0, abs(distance_pct) * 0.28 * elasticity)
+
+    if price > recommended:
+        revenue_change_pct = max(-35.0, revenue_change_pct)
+    else:
+        revenue_change_pct = max(-35.0, revenue_change_pct)
+
+    return {
+        "demand_change_pct": round(demand_change_pct, 1),
+        "revenue_change_pct": round(revenue_change_pct, 1),
+        "elasticity": round(elasticity, 2),
+        "distance_pct": round(distance_pct, 1),
+        "band_width_pct": round((spread / max(recommended, 1)) * 100, 1),
+    }
+
+
 def analyze_listings(listings: list[MarketListing]) -> dict[str, Any]:
     positive = [item for item in listings if item.price > 0]
     if len(positive) < 3:
@@ -368,6 +404,7 @@ def analyze_listings(listings: list[MarketListing]) -> dict[str, Any]:
         source: sum(1 for item in retained if item.source == source)
         for source in ("torob", "digikala", "basalam")
     }
+    elasticity = _estimate_elasticity(int(fair), int(fair), int(quick), int(patient))
     return {
         "range": {"low": quick, "high": patient},
         "scale": {"low": scale_low, "high": scale_high},
@@ -383,6 +420,7 @@ def analyze_listings(listings: list[MarketListing]) -> dict[str, Any]:
         "source_counts": counts,
         "listings": [item.public_dict() for item in retained[:18]],
         "method": "IQR + P25/P50/P75",
+        "elasticity": elasticity,
     }
 
 

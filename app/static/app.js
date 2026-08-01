@@ -197,6 +197,11 @@ function updateSelectedPrice() {
   const high = Number(slider.max);
   const position = percentageFor(value, low, high);
   const signal = document.querySelector("#sale-signal");
+  const elasticity = currentAnalysis.elasticity || {};
+  const recommended = Number(currentAnalysis.recommended || 0);
+  const distancePct = recommended > 0 ? ((value - recommended) / recommended) * 100 : 0;
+  const demandChange = elasticity.demand_change_pct || 0;
+  const revenueChange = elasticity.revenue_change_pct || 0;
   signal.style.setProperty("--signal-position", `${position}%`);
   document.querySelector("#selected-price").textContent = toman(value);
 
@@ -216,6 +221,20 @@ function updateSelectedPrice() {
     document.querySelector("#signal-title").textContent = "فروش صبورانه";
     document.querySelector("#signal-copy").textContent = "حاشیه بیشتری دارید، اما ممکن است برای فروش زمان بیشتری لازم باشد.";
     slider.style.setProperty("--thumb", "var(--red)");
+  }
+
+  const elasticityText = document.querySelector("#elasticity-summary");
+  if (elasticityText) {
+    if (value > recommended) {
+      elasticityText.textContent = `با این قیمت، حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از درآمد ممکن است از دست برود.`;
+      elasticityText.className = "helper-text";
+    } else if (value < recommended) {
+      elasticityText.textContent = `با این قیمت، احتمال می‌رود حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا و ${Math.abs(revenueChange).toFixed(0)}٪ از درآمد کمتر شود.`;
+      elasticityText.className = "helper-text";
+    } else {
+      elasticityText.textContent = `قیمت پیشنهادی بازار به‌نظر منطقی است و تاثیر کشش قیمتی در این محدوده محدود است.`;
+      elasticityText.className = "helper-text";
+    }
   }
 }
 
