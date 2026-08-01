@@ -95,30 +95,88 @@ def admin_login(request: Request, password: str = Form(...)) -> RedirectResponse
     return response
 
 
+def _admin_context(request: Request | None, active_tab: str) -> dict[str, Any]:
+    context = admin_dashboard_context(request)
+    context["active_tab"] = active_tab
+    return context
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard(request: Request) -> HTMLResponse:
     if not _admin_session(request):
         return RedirectResponse("/admin/login")
     return templates.TemplateResponse(
         request=request,
-        name="admin_dashboard.html",
-        context=admin_dashboard_context(request),
+        name="admin/overview.html",
+        context=_admin_context(request, "overview"),
+    )
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+def admin_users_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/users.html",
+        context=_admin_context(request, "users"),
+    )
+
+
+@app.get("/admin/notifications", response_class=HTMLResponse)
+def admin_notifications_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/notifications.html",
+        context=_admin_context(request, "notifications"),
+    )
+
+
+@app.get("/admin/usdt", response_class=HTMLResponse)
+def admin_usdt_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/usdt.html",
+        context=_admin_context(request, "usdt"),
+    )
+
+
+@app.get("/admin/settings", response_class=HTMLResponse)
+def admin_settings_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/settings.html",
+        context=_admin_context(request, "settings"),
     )
 
 
 @app.post("/admin/settings")
-def admin_update_settings(request: Request, merchant_sync_hours: int = Form(...), usdt_notification_enabled: str = Form(...), usdt_notification_percent: float = Form(...), usdt_check_interval_minutes: int = Form(...)) -> RedirectResponse:
+def admin_update_settings(request: Request, merchant_sync_hours: int = Form(...), usdt_notification_enabled: str = Form(...), usdt_notification_percent: float = Form(...), usdt_check_interval_minutes: int = Form(...), app_env: str | None = None, app_log_level: str | None = None, app_base_url: str | None = None, demo_mode: str | None = None) -> RedirectResponse:
     if request is not None and not _admin_session(request):
         raise HTTPException(401, "دسترسی مجاز نیست.")
+    app_env_value = str(app_env or settings.app_env)
+    app_log_level_value = str(app_log_level or settings.log_level)
+    app_base_url_value = str(app_base_url or settings.base_url)
+    demo_mode_value = str(demo_mode or settings.demo_mode).lower()
     overrides = {
         "MERCHANT_SYNC_HOURS": merchant_sync_hours,
         "USDT_NOTIFICATION_ENABLED": usdt_notification_enabled,
         "USDT_NOTIFICATION_PERCENT": usdt_notification_percent,
         "USDT_CHECK_INTERVAL_MINUTES": usdt_check_interval_minutes,
+        "APP_ENV": app_env_value,
+        "APP_LOG_LEVEL": app_log_level_value,
+        "APP_BASE_URL": app_base_url_value,
+        "DEMO_MODE": demo_mode_value,
     }
     save_admin_overrides(overrides)
     refresh_settings()
-    response = RedirectResponse("/admin", status_code=303)
+    response = RedirectResponse("/admin/settings", status_code=303)
     return response
 
 
@@ -127,7 +185,7 @@ def admin_clear_notifications(request: Request) -> RedirectResponse:
     if request is not None and not _admin_session(request):
         raise HTTPException(401, "دسترسی مجاز نیست.")
     clear_all_merchant_notifications()
-    response = RedirectResponse("/admin", status_code=303)
+    response = RedirectResponse("/admin/notifications", status_code=303)
     return response
 
 

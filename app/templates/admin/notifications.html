@@ -1,0 +1,15 @@
+{% extends "admin/base.html" %}
+{% block title %}سرویس نوتیف — پنل مدیریت{% endblock %}
+{% block content %}
+<h1>سرویس نوتیف</h1>
+<p class="hint">در این بخش می‌توانی اعلان‌های سیستم را مدیریت و پاک‌سازی کنی.</p>
+<div class="card">
+  <form method="post" action="/admin/notifications/clear">
+    <button type="submit" class="danger-button">پاک کردن همه اعلان‌ها</button>
+  </form>
+</div>
+<div class="card">
+  <h2>وضعیت اعلان‌ها</h2>
+  <p class="subtle">این بخش در آینده می‌تواند شامل فیلتر، جست‌وجو و مدیریت جزئی‌تر اعلان‌ها باشد.</p>
+</div>
+{% endblock %}

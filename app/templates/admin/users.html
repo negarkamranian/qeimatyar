@@ -1,0 +1,32 @@
+{% extends "admin/base.html" %}
+{% block title %}سرویس کاربران — پنل مدیریت{% endblock %}
+{% block content %}
+<h1>سرویس کاربران</h1>
+<p class="hint">لیست کاربران و غرفه‌های متصل در این بخش مدیریت می‌شود.</p>
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>نام غرفه</th>
+          <th>کاربر</th>
+          <th>وضعیت</th>
+          <th>آخرین همگام‌سازی</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td>{{ user.vendor_title }}</td>
+          <td>{{ user.user_name or '-' }}</td>
+          <td><span class="badge {% if not user.is_active %}inactive{% endif %}">{{ 'در حال کار' if user.is_active else 'غیرفعال' }}</span></td>
+          <td>{{ user.last_synced_at or 'هنوز' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="hint">هنوز کاربری متصل نشده است.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "admin/base.html" %}
+{% block title %}تنظیمات و دیپلوی سایت — پنل مدیریت{% endblock %}
+{% block content %}
+<h1>تنظیمات و دیپلوی سایت</h1>
+<p class="hint">متغیرهای اصلی محیطی، فایل تنظیمات و مسیرهای استقرار در این بخش قابل اصلاح‌اند.</p>
+<div class="card">
+  <form method="post" action="/admin/settings">
+    <div class="row">
+      <label for="merchant_sync_hours">MERCHANT_SYNC_HOURS</label>
+      <input id="merchant_sync_hours" name="merchant_sync_hours" type="number" min="1" value="{{ settings.merchant_sync_hours }}">
+    </div>
+    <div class="row">
+      <label for="app_env">APP_ENV</label>
+      <input id="app_env" name="app_env" value="{{ settings.app_env }}">
+    </div>
+    <div class="row">
+      <label for="app_log_level">APP_LOG_LEVEL</label>
+      <input id="app_log_level" name="app_log_level" value="{{ settings.log_level }}">
+    </div>
+    <div class="row">
+      <label for="app_base_url">APP_BASE_URL</label>
+      <input id="app_base_url" name="app_base_url" value="{{ settings.base_url }}">
+    </div>
+    <div class="row">
+      <label for="demo_mode">DEMO_MODE</label>
+      <select id="demo_mode" name="demo_mode">
+        <option value="true" {% if settings.demo_mode %}selected{% endif %}>true</option>
+        <option value="false" {% if not settings.demo_mode %}selected{% endif %}>false</option>
+      </select>
+    </div>
+    <button type="submit">ذخیره تنظیمات دیپلوی</button>
+  </form>
+</div>
+<div class="card">
+  <h2>فایل تنظیمات</h2>
+  <p class="subtle">تنظیمات در فایل <strong>{{ admin_settings_file }}</strong> و فایل .env مربوطه ذخیره می‌شوند.</p>
+</div>
+{% endblock %}

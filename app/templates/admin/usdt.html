@@ -1,0 +1,26 @@
+{% extends "admin/base.html" %}
+{% block title %}سرویس USDT — پنل مدیریت{% endblock %}
+{% block content %}
+<h1>سرویس USDT</h1>
+<p class="hint">تنظیمات مرتبط با اعلان و بررسی تغییر نرخ USDT در این بخش مدیریت می‌شوند.</p>
+<div class="card">
+  <form method="post" action="/admin/settings">
+    <div class="row">
+      <label for="usdt_notification_enabled">USDT_NOTIFICATION_ENABLED</label>
+      <select id="usdt_notification_enabled" name="usdt_notification_enabled">
+        <option value="true" {% if settings.usdt_notification_enabled %}selected{% endif %}>true</option>
+        <option value="false" {% if not settings.usdt_notification_enabled %}selected{% endif %}>false</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="usdt_notification_percent">USDT_NOTIFICATION_PERCENT</label>
+      <input id="usdt_notification_percent" name="usdt_notification_percent" type="number" step="0.1" value="{{ settings.usdt_notification_percent }}">
+    </div>
+    <div class="row">
+      <label for="usdt_check_interval_minutes">USDT_CHECK_INTERVAL_MINUTES</label>
+      <input id="usdt_check_interval_minutes" name="usdt_check_interval_minutes" type="number" min="1" value="{{ settings.usdt_check_interval_minutes }}">
+    </div>
+    <button type="submit">ذخیره تنظیمات USDT</button>
+  </form>
+</div>
+{% endblock %}

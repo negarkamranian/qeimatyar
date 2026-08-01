@@ -1,0 +1,28 @@
+{% extends "admin/base.html" %}
+{% block title %}نمای کلی — پنل مدیریت{% endblock %}
+{% block content %}
+<h1>نمای کلی سامانه</h1>
+<p class="hint">در این بخش وضعیت کل سیستم و شاخص‌های مدیریتی قابل مشاهده‌اند.</p>
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="hint">تعداد کاربران</div>
+    <strong>{{ user_count }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">کاربران فعال</div>
+    <strong>{{ active_users }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">محیط اجرا</div>
+    <strong>{{ settings.app_env }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">وضعیت USDT</div>
+    <strong>{{ 'فعال' if settings.usdt_notification_enabled else 'غیرفعال' }}</strong>
+  </div>
+</div>
+<div class="card">
+  <h2>پیش‌نویس وضعیت سیستم</h2>
+  <p class="subtle">در این بخش می‌توانی وضعیت سرویس‌ها، حساب‌های متصل و تنظیمات پرکاربرد را در یک نگاه بررسی کنی.</p>
+</div>
+{% endblock %}
