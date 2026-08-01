@@ -189,6 +189,38 @@ function renderResult(data) {
   document.querySelector("#toggle-listings").textContent = "نمایش همه";
 }
 
+function computeElasticity(value, recommended, low, high) {
+  if (!recommended || recommended <= 0) {
+    return { demandChangePct: 0, revenueChangePct: 0, distancePct: 0 };
+  }
+  const distancePct = ((value - recommended) / recommended) * 100;
+  const absDistance = Math.abs(distancePct);
+  let elasticity = 1.0;
+  if (absDistance < 3) {
+    elasticity = 0.7;
+  } else if (absDistance < 8) {
+    elasticity = 1.1;
+  } else if (absDistance < 15) {
+    elasticity = 1.4;
+  } else {
+    elasticity = 1.8;
+  }
+  let demandChangePct;
+  let revenueChangePct;
+  if (value > recommended) {
+    demandChangePct = -Math.min(35, absDistance * 0.35 * elasticity);
+    revenueChangePct = demandChangePct;
+  } else {
+    demandChangePct = Math.min(25, absDistance * 0.25 * elasticity);
+    revenueChangePct = -Math.min(35, absDistance * 0.28 * elasticity);
+  }
+  return {
+    demandChangePct: Math.round(demandChangePct * 10) / 10,
+    revenueChangePct: Math.round(revenueChangePct * 10) / 10,
+    distancePct: Math.round(distancePct * 10) / 10,
+  };
+}
+
 function updateSelectedPrice() {
   if (!currentAnalysis) return;
   const slider = document.querySelector("#price-slider");
@@ -197,11 +229,11 @@ function updateSelectedPrice() {
   const high = Number(slider.max);
   const position = percentageFor(value, low, high);
   const signal = document.querySelector("#sale-signal");
-  const elasticity = currentAnalysis.elasticity || {};
   const recommended = Number(currentAnalysis.recommended || 0);
-  const distancePct = recommended > 0 ? ((value - recommended) / recommended) * 100 : 0;
-  const demandChange = elasticity.demand_change_pct || 0;
-  const revenueChange = elasticity.revenue_change_pct || 0;
+  const elasticity = computeElasticity(value, recommended, low, high);
+  const demandChange = elasticity.demandChangePct;
+  const revenueChange = elasticity.revenueChangePct;
+  const distancePct = elasticity.distancePct;
   signal.style.setProperty("--signal-position", `${position}%`);
   const selectedPriceEl = document.querySelector("#selected-price");
   selectedPriceEl.textContent = toman(value);
