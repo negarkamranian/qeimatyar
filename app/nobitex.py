@@ -86,9 +86,12 @@ def _rate_from_orderbook(payload: dict[str, Any]) -> NobitexRate:
         source = "midpoint"
     if price <= 0:
         raise NobitexError("Nobitex returned a non-positive price.")
+    # Nobitex orderbook prices are returned in rial, but the product UI and
+    # merchant notifications work in toman. Convert once at the boundary.
+    price_toman = int(price / Decimal("10"))
     return NobitexRate(
         symbol="USDTIRT",
-        price_toman=int(price),
+        price_toman=price_toman,
         source=source,
         last_update=payload.get("lastUpdate"),
     )

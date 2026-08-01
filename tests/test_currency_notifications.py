@@ -103,7 +103,7 @@ def test_nobitex_orderbook_rate_prefers_last_trade_price():
         }
     )
     assert rate.symbol == "USDTIRT"
-    assert rate.price_toman == 625_000
+    assert rate.price_toman == 62_500
     assert rate.source == "lastTradePrice"
 
 
@@ -117,5 +117,5 @@ def test_nobitex_orderbook_rate_falls_back_to_midpoint():
             "bids": [["624000", "10"]],
         }
     )
-    assert rate.price_toman == 625_000
+    assert rate.price_toman == 62_500
     assert rate.source == "midpoint"
