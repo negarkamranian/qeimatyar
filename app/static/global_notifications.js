@@ -49,7 +49,7 @@
     state.toastTimer = setTimeout(() => {
       toastNode.classList.remove("show");
       setTimeout(() => toastNode.remove(), 180);
-    }, options.timeout || 4600);
+    }, options.timeout || 8000);
     return toastNode;
   };
 

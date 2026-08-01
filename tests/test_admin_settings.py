@@ -1,6 +1,11 @@
 from app.config import refresh_settings, save_admin_overrides, settings
 from app.db import connection, init_db, now_iso
-from app.main import admin_dashboard_context, admin_login, admin_update_settings
+from app.main import (
+    admin_dashboard_context,
+    admin_login,
+    admin_update_settings,
+    clear_all_merchant_notifications,
+)
 
 
 def _call_admin_update_settings(**kwargs):
@@ -31,6 +36,44 @@ def test_admin_panel_exposes_connected_users():
 
     with connection() as db:
         db.execute("DELETE FROM accounts WHERE user_id IN (9001, 9002)")
+
+
+def test_admin_panel_clears_all_merchant_notifications():
+    init_db()
+    with connection() as db:
+        db.execute("DELETE FROM merchant_notifications")
+        db.execute("DELETE FROM accounts WHERE user_id IN (8001, 8002)")
+        db.execute(
+            """INSERT INTO accounts
+            (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,token_expires_at,sync_status)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (8001, 18001, "فروشگاه تست", "کاربر تست", "token", now_iso(), now_iso(), "idle"),
+        )
+        db.execute(
+            """INSERT INTO accounts
+            (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,token_expires_at,sync_status)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (8002, 18002, "فروشگاه دوم", "کاربر دوم", "token2", now_iso(), now_iso(), "running"),
+        )
+        db.execute(
+            """INSERT INTO merchant_notifications
+            (user_id,kind,title,body,target_url,created_at)
+            VALUES(?,?,?,?,?,?)""",
+            (8001, "price_opportunity", "عنوان ۱", "بدنه ۱", "/merchant", now_iso()),
+        )
+        db.execute(
+            """INSERT INTO merchant_notifications
+            (user_id,kind,title,body,target_url,created_at)
+            VALUES(?,?,?,?,?,?)""",
+            (8002, "price_opportunity", "عنوان ۲", "بدنه ۲", "/merchant", now_iso()),
+        )
+
+    cleared_count = clear_all_merchant_notifications()
+    assert cleared_count == 2
+
+    with connection() as db:
+        assert db.execute("SELECT COUNT(*) FROM merchant_notifications").fetchone()[0] == 0
+        db.execute("DELETE FROM accounts WHERE user_id IN (8001, 8002)")
 
 
 def test_admin_panel_updates_runtime_settings(monkeypatch):

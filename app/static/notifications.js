@@ -65,6 +65,13 @@ async function loadNotifications() {
   renderNotifications(data.unread_count);
 }
 
+function startPolling() {
+  if (window.__notificationsPolling) return;
+  window.__notificationsPolling = window.setInterval(() => {
+    loadNotifications().catch(() => {});
+  }, 8000);
+}
+
 async function markNotificationRead(notificationId) {
   await api(`/api/merchant/notifications/${notificationId}/read`, { method: "PATCH" });
   state.notifications = state.notifications.map(notification =>
@@ -106,3 +113,4 @@ document.addEventListener("click", event => {
 });
 
 loadNotifications().catch(error => toast(error.message));
+startPolling();

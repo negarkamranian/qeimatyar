@@ -122,6 +122,15 @@ def admin_update_settings(request: Request, merchant_sync_hours: int = Form(...)
     return response
 
 
+@app.post("/admin/notifications/clear")
+def admin_clear_notifications(request: Request) -> RedirectResponse:
+    if request is not None and not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    clear_all_merchant_notifications()
+    response = RedirectResponse("/admin", status_code=303)
+    return response
+
+
 class PolicyInput(BaseModel):
     enabled: bool
     floor_price: int = Field(gt=0)
@@ -170,6 +179,12 @@ def _notification_payload(notification: dict[str, Any]) -> dict[str, Any]:
     notification["metadata"] = json.loads(notification.get("metadata") or "{}")
     notification["read"] = bool(notification.get("read_at"))
     return notification
+
+
+def clear_all_merchant_notifications() -> int:
+    with connection() as db:
+        result = db.execute("DELETE FROM merchant_notifications")
+    return int(result.rowcount or 0)
 
 
 class SearchRateLimiter:
