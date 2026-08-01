@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>پنل مدیریت — قیمت‌یار</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260729-4">
+  <style>
+    body { font-family: Vazirmatn, sans-serif; background: #f3f7fb; color: #132238; }
+    .wrap { max-width: 760px; margin: 40px auto; background: white; border-radius: 18px; padding: 28px; box-shadow: 0 16px 40px rgba(0,0,0,.08); }
+    h1 { margin-top: 0; }
+    form { display: grid; gap: 14px; }
+    .row { display: grid; gap: 8px; }
+    label { font-weight: 600; }
+    input, select, button { font: inherit; padding: 12px; border-radius: 10px; border: 1px solid #dbe4ee; }
+    button { background: #0f766e; color: white; border: none; cursor: pointer; }
+    .hint { color: #5b6b7f; font-size: .95rem; }
+    .status-box { margin-top: 12px; padding: 12px 14px; border: 1px solid #dbe4ee; border-radius: 10px; background: #f8fbff; color: #4b5d6f; font-size: .95rem; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>پنل مدیریت</h1>
+    <p class="hint">این بخش برای تغییر تنظیمات پرکاربرد بدون نیاز به ویرایش کد و دیپلوی مجدد طراحی شده است.</p>
+    <div class="status-box">تنظیمات ذخیره‌شده در فایل <strong>{{ admin_settings_file }}</strong> نوشته می‌شوند و در زمان راه‌اندازی بعدی هم خوانده می‌شوند.</div>
+    <form method="post" action="/admin/settings">
+      <div class="row">
+        <label for="merchant_sync_hours">MERCHANT_SYNC_HOURS</label>
+        <input id="merchant_sync_hours" name="merchant_sync_hours" type="number" min="1" value="{{ settings.merchant_sync_hours }}">
+      </div>
+      <div class="row">
+        <label for="usdt_notification_enabled">USDT_NOTIFICATION_ENABLED</label>
+        <select id="usdt_notification_enabled" name="usdt_notification_enabled">
+          <option value="true" {% if settings.usdt_notification_enabled %}selected{% endif %}>true</option>
+          <option value="false" {% if not settings.usdt_notification_enabled %}selected{% endif %}>false</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="usdt_notification_percent">USDT_NOTIFICATION_PERCENT</label>
+        <input id="usdt_notification_percent" name="usdt_notification_percent" type="number" step="0.1" value="{{ settings.usdt_notification_percent }}">
+      </div>
+      <div class="row">
+        <label for="usdt_check_interval_minutes">USDT_CHECK_INTERVAL_MINUTES</label>
+        <input id="usdt_check_interval_minutes" name="usdt_check_interval_minutes" type="number" min="1" value="{{ settings.usdt_check_interval_minutes }}">
+      </div>
+      <button type="submit">ذخیره تنظیمات</button>
+    </form>
+    <p class="hint">فایل تنظیمات: {{ admin_settings_file }}</p>
+  </main>
+</body>
+</html>

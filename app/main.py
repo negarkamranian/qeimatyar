@@ -14,14 +14,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
-from app.config import settings
+from app.config import refresh_settings, save_admin_overrides, settings
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
 from app.marketplaces import (
@@ -53,6 +53,60 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="قیمت‌یار", version="0.2.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
+
+
+def _admin_session(request: Request | None) -> bool:
+    if request is None:
+        return False
+    return request.cookies.get("admin_session") == settings.secret
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def admin_login_page(request: Request) -> HTMLResponse:
+    if _admin_session(request):
+        return RedirectResponse("/admin")
+    return templates.TemplateResponse(request=request, name="admin_login.html", context={})
+
+
+@app.post("/admin/login")
+def admin_login(request: Request, password: str = Form(...)) -> RedirectResponse:
+    if not settings.admin_enabled or not settings.admin_password:
+        raise HTTPException(403, "پنل مدیریت فعال نیست.")
+    if password != settings.admin_password:
+        raise HTTPException(401, "رمزعبور اشتباه است.")
+    response = RedirectResponse("/admin", status_code=303)
+    response.set_cookie("admin_session", settings.secret, httponly=True, secure=settings.app_env == "production", samesite="lax")
+    return response
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_dashboard(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_dashboard.html",
+        context={
+            "settings": settings,
+            "admin_settings_file": settings.admin_settings_file,
+        },
+    )
+
+
+@app.post("/admin/settings")
+def admin_update_settings(request: Request, merchant_sync_hours: int = Form(...), usdt_notification_enabled: str = Form(...), usdt_notification_percent: float = Form(...), usdt_check_interval_minutes: int = Form(...)) -> RedirectResponse:
+    if request is not None and not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    overrides = {
+        "MERCHANT_SYNC_HOURS": merchant_sync_hours,
+        "USDT_NOTIFICATION_ENABLED": usdt_notification_enabled,
+        "USDT_NOTIFICATION_PERCENT": usdt_notification_percent,
+        "USDT_CHECK_INTERVAL_MINUTES": usdt_check_interval_minutes,
+    }
+    save_admin_overrides(overrides)
+    refresh_settings()
+    response = RedirectResponse("/admin", status_code=303)
+    return response
 
 
 class PolicyInput(BaseModel):
