@@ -61,6 +61,22 @@ def _admin_session(request: Request | None) -> bool:
     return request.cookies.get("admin_session") == settings.secret
 
 
+def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
+    users = rows(
+        """SELECT user_id, vendor_title, user_name, sync_status, last_synced_at, connected_at
+        FROM accounts ORDER BY connected_at DESC, user_id DESC""",
+    )
+    for user in users:
+        user["is_active"] = user.get("sync_status") in {"running", "queued"}
+    return {
+        "settings": settings,
+        "admin_settings_file": settings.admin_settings_file,
+        "users": users,
+        "user_count": len(users),
+        "active_users": sum(1 for user in users if user["is_active"]),
+    }
+
+
 @app.get("/admin/login", response_class=HTMLResponse)
 def admin_login_page(request: Request) -> HTMLResponse:
     if _admin_session(request):
@@ -86,10 +102,7 @@ def admin_dashboard(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="admin_dashboard.html",
-        context={
-            "settings": settings,
-            "admin_settings_file": settings.admin_settings_file,
-        },
+        context=admin_dashboard_context(request),
     )
 
 

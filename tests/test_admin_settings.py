@@ -1,9 +1,36 @@
 from app.config import refresh_settings, save_admin_overrides, settings
-from app.main import admin_login, admin_update_settings
+from app.db import connection, init_db, now_iso
+from app.main import admin_dashboard_context, admin_login, admin_update_settings
 
 
 def _call_admin_update_settings(**kwargs):
     return admin_update_settings(None, **kwargs)
+
+
+def test_admin_panel_exposes_connected_users():
+    init_db()
+    with connection() as db:
+        db.execute("DELETE FROM accounts WHERE user_id IN (9001, 9002)")
+        db.execute(
+            """INSERT INTO accounts
+            (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,token_expires_at,sync_status)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (9001, 10001, "فروشگاه تست", "کاربر تست", "token", now_iso(), now_iso(), "idle"),
+        )
+        db.execute(
+            """INSERT INTO accounts
+            (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,token_expires_at,sync_status)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (9002, 10002, "فروشگاه دوم", "کاربر دوم", "token2", now_iso(), now_iso(), "running"),
+        )
+
+    context = admin_dashboard_context(None)
+    assert context["user_count"] >= 2
+    assert any(user["user_id"] == 9001 for user in context["users"])
+    assert any(user["user_id"] == 9002 for user in context["users"])
+
+    with connection() as db:
+        db.execute("DELETE FROM accounts WHERE user_id IN (9001, 9002)")
 
 
 def test_admin_panel_updates_runtime_settings(monkeypatch):

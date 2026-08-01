@@ -16,6 +16,15 @@
     button { background: #0f766e; color: white; border: none; cursor: pointer; }
     .hint { color: #5b6b7f; font-size: .95rem; }
     .status-box { margin-top: 12px; padding: 12px 14px; border: 1px solid #dbe4ee; border-radius: 10px; background: #f8fbff; color: #4b5d6f; font-size: .95rem; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0 20px; }
+    .summary-card { padding: 14px; border: 1px solid #e7eef5; border-radius: 12px; background: linear-gradient(135deg, #f8fbff 0%, #f1f6fb 100%); }
+    .summary-card strong { display: block; font-size: 1.2rem; margin-top: 4px; }
+    .table-wrap { overflow-x: auto; margin-top: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #e7eef5; text-align: right; }
+    th { color: #5b6b7f; font-weight: 700; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: .8rem; background: #e8f6ef; color: #166c50; }
+    .badge.inactive { background: #f3f4f6; color: #6b7280; }
   </style>
 </head>
 <body>
@@ -23,6 +32,40 @@
     <h1>پنل مدیریت</h1>
     <p class="hint">این بخش برای تغییر تنظیمات پرکاربرد بدون نیاز به ویرایش کد و دیپلوی مجدد طراحی شده است.</p>
     <div class="status-box">تنظیمات ذخیره‌شده در فایل <strong>{{ admin_settings_file }}</strong> نوشته می‌شوند و در زمان راه‌اندازی بعدی هم خوانده می‌شوند.</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="hint">تعداد کاربران</div>
+        <strong>{{ user_count }}</strong>
+      </div>
+      <div class="summary-card">
+        <div class="hint">کاربران فعال</div>
+        <strong>{{ active_users }}</strong>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>نام غرفه</th>
+            <th>کاربر</th>
+            <th>وضعیت</th>
+            <th>آخرین همگام‌سازی</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+          <tr>
+            <td>{{ user.vendor_title }}</td>
+            <td>{{ user.user_name or '-' }}</td>
+            <td><span class="badge {% if not user.is_active %}inactive{% endif %}">{{ 'در حال کار' if user.is_active else 'غیرفعال' }}</span></td>
+            <td>{{ user.last_synced_at or 'هنوز' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="hint">هنوز کاربری متصل نشده است.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     <form method="post" action="/admin/settings">
       <div class="row">
         <label for="merchant_sync_hours">MERCHANT_SYNC_HOURS</label>
