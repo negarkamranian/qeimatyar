@@ -35,6 +35,15 @@
     .badge.inactive { background: #f3f4f6; color: #6b7280; }
     .back-link { display: inline-block; margin-bottom: 16px; color: #0f766e; text-decoration: none; font-weight: 600; }
     .back-link:hover { text-decoration: underline; }
+    .toast {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      padding: 12px 24px; border-radius: 12px; font-size: .9rem; font-weight: 600;
+      z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,.15);
+      opacity: 1; transition: opacity .4s; max-width: 90vw; text-align: center;
+    }
+    .toast.success { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .toast.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .toast.hide { opacity: 0; }
   </style>
 </head>
 <body>
@@ -53,5 +62,14 @@
       </section>
     </div>
   </main>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const toasts = document.querySelectorAll(".toast");
+      toasts.forEach(toast => {
+        setTimeout(() => toast.classList.add("hide"), 4000);
+        toast.addEventListener("transitionend", () => toast.remove());
+      });
+    });
+  </script>
 </body>
 </html>

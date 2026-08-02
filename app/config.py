@@ -64,8 +64,36 @@ def _apply_admin_overrides(target: Settings, overrides: dict[str, Any]) -> None:
             target.usdt_check_interval_minutes = int(value)
 
 
+def _env_file_paths() -> list[Path]:
+    """Return env file paths to write to: always the primary .env plus .env.production if it exists."""
+    paths = [Path(os.getenv("ENV_FILE", ".env"))]
+    prod = Path(os.getenv("ENV_FILE_PRODUCTION", ".env.production"))
+    if prod.is_file():
+        paths.append(prod)
+    return paths
+
+
+def _load_env_file(path: Path) -> None:
+    """Load KEY=VALUE pairs from an env file into os.environ, overriding existing values for those keys."""
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key:
+            os.environ[key] = value
+
+
 def refresh_settings() -> Settings:
     global settings
+    prod_env = Path(os.getenv("ENV_FILE_PRODUCTION", ".env.production"))
+    _load_env_file(prod_env)
     new_settings = Settings()
     _apply_admin_overrides(new_settings, _load_admin_overrides())
     for field_name, value in new_settings.__dict__.items():
@@ -73,8 +101,7 @@ def refresh_settings() -> Settings:
     return settings
 
 
-def _write_env_file(overrides: dict[str, Any]) -> None:
-    env_path = Path(os.getenv("ENV_FILE", ".env"))
+def _write_env_file_to_path(env_path: Path, overrides: dict[str, Any]) -> None:
     env_path.touch(exist_ok=True)
     lines = env_path.read_text(encoding="utf-8").splitlines()
     updated: list[str] = []
@@ -94,6 +121,11 @@ def _write_env_file(overrides: dict[str, Any]) -> None:
         if key not in seen:
             updated.append(f"{key}={value}")
     env_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+
+
+def _write_env_file(overrides: dict[str, Any]) -> None:
+    for env_path in _env_file_paths():
+        _write_env_file_to_path(env_path, overrides)
 
 
 def save_admin_overrides(overrides: dict[str, Any]) -> Settings:

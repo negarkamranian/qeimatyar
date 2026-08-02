@@ -139,8 +139,7 @@ function renderResult(data) {
   document.querySelector("#confidence").textContent = `${fa(analysis.confidence)}٪`;
 
   const slider = document.querySelector("#price-slider");
-  const spread = Math.max(scale.high - scale.low, 2_000);
-  const step = spread < 1_000_000 ? 1_000 : 10_000;
+  const step = 1000;
   currentSliderBands = sliderBands(analysis);
   slider.style.setProperty("--quick-stop", `${currentSliderBands.quickStop}%`);
   slider.style.setProperty("--patient-start", `${currentSliderBands.patientStart}%`);
@@ -300,11 +299,7 @@ document.querySelectorAll("[data-example]").forEach(button => {
 document.querySelector("#price-slider").addEventListener("input", updateSelectedPrice);
 document.querySelector("#use-recommended").addEventListener("click", () => {
   const slider = document.querySelector("#price-slider");
-  const recommended = Number(currentAnalysis.recommended);
-  const step = Number(slider.step);
-  const min = Number(slider.min);
-  const snapped = Math.round((recommended - min) / step) * step + min;
-  slider.value = snapped;
+  slider.value = Number(currentAnalysis.recommended);
   document.querySelector("#selected-price-label").textContent = "قیمت انتخابی شما";
   updateSelectedPrice();
 });

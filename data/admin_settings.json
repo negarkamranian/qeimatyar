@@ -1,1 +1,10 @@
-{}
+{
+  "MERCHANT_SYNC_HOURS": 9,
+  "USDT_NOTIFICATION_ENABLED": "false",
+  "USDT_NOTIFICATION_PERCENT": 1.5,
+  "USDT_CHECK_INTERVAL_MINUTES": 60,
+  "APP_ENV": "annotation=Union[str, NoneType] required=False default=None alias='app_env' json_schema_extra={}",
+  "APP_LOG_LEVEL": "annotation=Union[str, NoneType] required=False default=None alias='app_log_level' json_schema_extra={}",
+  "APP_BASE_URL": "annotation=Union[str, NoneType] required=False default=None alias='app_base_url' json_schema_extra={}",
+  "DEMO_MODE": "annotation=union[str, nonetype] required=false default=none alias='demo_mode' json_schema_extra={}"
+}

@@ -197,15 +197,29 @@ def admin_usdt_page(request: Request) -> HTMLResponse:
 def admin_settings_page(request: Request) -> HTMLResponse:
     if not _admin_session(request):
         return RedirectResponse("/admin/login")
+    from app.config import _env_file_paths
     return templates.TemplateResponse(
         request=request,
         name="admin/settings.html",
-        context=_admin_context(request, "settings"),
+        context={
+            **_admin_context(request, "settings"),
+            "env_file_paths": [str(p) for p in _env_file_paths()],
+        },
     )
 
 
 @app.post("/admin/settings")
-def admin_update_settings(request: Request, merchant_sync_hours: int = Form(...), usdt_notification_enabled: str = Form(...), usdt_notification_percent: float = Form(...), usdt_check_interval_minutes: int = Form(...), app_env: str | None = None, app_log_level: str | None = None, app_base_url: str | None = None, demo_mode: str | None = None) -> RedirectResponse:
+def admin_update_settings(
+    request: Request,
+    merchant_sync_hours: int | None = Form(default=None),
+    usdt_notification_enabled: str | None = Form(default=None),
+    usdt_notification_percent: float | None = Form(default=None),
+    usdt_check_interval_minutes: int | None = Form(default=None),
+    app_env: str | None = Form(default=None),
+    app_log_level: str | None = Form(default=None),
+    app_base_url: str | None = Form(default=None),
+    demo_mode: str | None = Form(default=None),
+) -> RedirectResponse:
     if request is not None and not _admin_session(request):
         raise HTTPException(401, "دسترسی مجاز نیست.")
     app_env_value = str(app_env or settings.app_env)
@@ -213,18 +227,22 @@ def admin_update_settings(request: Request, merchant_sync_hours: int = Form(...)
     app_base_url_value = str(app_base_url or settings.base_url)
     demo_mode_value = str(demo_mode or settings.demo_mode).lower()
     overrides = {
-        "MERCHANT_SYNC_HOURS": merchant_sync_hours,
-        "USDT_NOTIFICATION_ENABLED": usdt_notification_enabled,
-        "USDT_NOTIFICATION_PERCENT": usdt_notification_percent,
-        "USDT_CHECK_INTERVAL_MINUTES": usdt_check_interval_minutes,
+        "MERCHANT_SYNC_HOURS": merchant_sync_hours if merchant_sync_hours is not None else settings.merchant_sync_hours,
+        "USDT_NOTIFICATION_ENABLED": usdt_notification_enabled if usdt_notification_enabled is not None else str(settings.usdt_notification_enabled).lower(),
+        "USDT_NOTIFICATION_PERCENT": usdt_notification_percent if usdt_notification_percent is not None else settings.usdt_notification_percent,
+        "USDT_CHECK_INTERVAL_MINUTES": usdt_check_interval_minutes if usdt_check_interval_minutes is not None else settings.usdt_check_interval_minutes,
         "APP_ENV": app_env_value,
         "APP_LOG_LEVEL": app_log_level_value,
         "APP_BASE_URL": app_base_url_value,
         "DEMO_MODE": demo_mode_value,
     }
-    save_admin_overrides(overrides)
-    refresh_settings()
-    response = RedirectResponse("/admin/settings", status_code=303)
+    try:
+        save_admin_overrides(overrides)
+    except Exception as exc:
+        logger.exception("Settings save failed")
+        response = RedirectResponse("/admin/settings?error=1", status_code=303)
+        return response
+    response = RedirectResponse("/admin/settings?saved=1", status_code=303)
     return response
 
 

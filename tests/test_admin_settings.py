@@ -1,4 +1,9 @@
-from app.config import refresh_settings, save_admin_overrides, settings
+from app.config import (
+    _env_file_paths,
+    refresh_settings,
+    save_admin_overrides,
+    settings,
+)
 from app.db import connection, init_db, now_iso
 from app.main import (
     admin_dashboard_context,
@@ -6,6 +11,7 @@ from app.main import (
     admin_update_settings,
     clear_all_merchant_notifications,
 )
+from pathlib import Path
 
 
 def _call_admin_update_settings(**kwargs):
@@ -98,3 +104,71 @@ def test_admin_panel_updates_runtime_settings(monkeypatch):
     assert settings.usdt_check_interval_minutes == 60
 
     save_admin_overrides({})
+
+
+def test_admin_settings_redirect_has_toast_param():
+    response = _call_admin_update_settings(
+        merchant_sync_hours=9,
+        usdt_notification_enabled="false",
+        usdt_notification_percent=1.5,
+        usdt_check_interval_minutes=60,
+    )
+    assert response.status_code == 303
+    assert "?saved=1" in response.headers["location"]
+
+
+def test_settings_write_to_env_production(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    prod_file = tmp_path / ".env.production"
+    env_file.write_text("MERCHANT_SYNC_HOURS=6\nUSDT_NOTIFICATION_ENABLED=true\n", encoding="utf-8")
+    prod_file.write_text("MERCHANT_SYNC_HOURS=6\nUSDT_NOTIFICATION_ENABLED=true\n", encoding="utf-8")
+
+    monkeypatch.setenv("ENV_FILE", str(env_file))
+    monkeypatch.setenv("ENV_FILE_PRODUCTION", str(prod_file))
+    monkeypatch.setenv("ADMIN_SETTINGS_FILE", str(tmp_path / "overrides.json"))
+
+    save_admin_overrides(
+        {
+            "MERCHANT_SYNC_HOURS": 12,
+            "USDT_NOTIFICATION_ENABLED": "false",
+            "USDT_NOTIFICATION_PERCENT": 2.5,
+            "USDT_CHECK_INTERVAL_MINUTES": 45,
+        }
+    )
+
+    prod_content = prod_file.read_text(encoding="utf-8")
+    assert "MERCHANT_SYNC_HOURS=12" in prod_content
+    assert "USDT_NOTIFICATION_ENABLED=false" in prod_content
+    assert "USDT_NOTIFICATION_PERCENT=2.5" in prod_content
+    assert "USDT_CHECK_INTERVAL_MINUTES=45" in prod_content
+
+
+def test_settings_load_from_env_production(tmp_path, monkeypatch):
+    prod_file = tmp_path / ".env.production"
+    prod_file.write_text("MERCHANT_SYNC_HOURS=3\nUSDT_NOTIFICATION_PERCENT=0.5\n", encoding="utf-8")
+
+    monkeypatch.setenv("ENV_FILE_PRODUCTION", str(prod_file))
+    monkeypatch.setenv("ENV_FILE", str(tmp_path / ".env"))
+    monkeypatch.setenv("ADMIN_SETTINGS_FILE", str(tmp_path / "overrides.json"))
+
+    saved_hours = settings.merchant_sync_hours
+    saved_percent = settings.usdt_notification_percent
+
+    refresh_settings()
+
+    assert settings.merchant_sync_hours == 3
+    assert settings.usdt_notification_percent == 0.5
+
+
+def test_env_file_paths_includes_production_when_exists(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    prod_file = tmp_path / ".env.production"
+    env_file.touch()
+    prod_file.touch()
+
+    monkeypatch.setenv("ENV_FILE", str(env_file))
+    monkeypatch.setenv("ENV_FILE_PRODUCTION", str(prod_file))
+
+    paths = _env_file_paths()
+    assert str(env_file) in [str(p) for p in paths]
+    assert str(prod_file) in [str(p) for p in paths]

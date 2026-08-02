@@ -3,11 +3,32 @@
 {% block content %}
 <h1>تنظیمات و دیپلوی سایت</h1>
 <p class="hint">متغیرهای اصلی محیطی، فایل تنظیمات و مسیرهای استقرار در این بخش قابل اصلاح‌اند.</p>
+{% if request.query_params.get("saved") %}
+<div class="toast success">تنظیمات با موفقیت ذخیره شد.</div>
+{% endif %}
+{% if request.query_params.get("error") %}
+<div class="toast error">خطا در ذخیره تنظیمات. لطفاً دوباره تلاش کنید.</div>
+{% endif %}
 <div class="card">
   <form method="post" action="/admin/settings">
     <div class="row">
       <label for="merchant_sync_hours">MERCHANT_SYNC_HOURS</label>
       <input id="merchant_sync_hours" name="merchant_sync_hours" type="number" min="1" value="{{ settings.merchant_sync_hours }}">
+    </div>
+    <div class="row">
+      <label for="usdt_notification_enabled">USDT_NOTIFICATION_ENABLED</label>
+      <select id="usdt_notification_enabled" name="usdt_notification_enabled">
+        <option value="true" {% if settings.usdt_notification_enabled %}selected{% endif %}>true</option>
+        <option value="false" {% if not settings.usdt_notification_enabled %}selected{% endif %}>false</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="usdt_notification_percent">USDT_NOTIFICATION_PERCENT</label>
+      <input id="usdt_notification_percent" name="usdt_notification_percent" type="number" step="0.1" value="{{ settings.usdt_notification_percent }}">
+    </div>
+    <div class="row">
+      <label for="usdt_check_interval_minutes">USDT_CHECK_INTERVAL_MINUTES</label>
+      <input id="usdt_check_interval_minutes" name="usdt_check_interval_minutes" type="number" min="1" value="{{ settings.usdt_check_interval_minutes }}">
     </div>
     <div class="row">
       <label for="app_env">APP_ENV</label>
@@ -34,5 +55,8 @@
 <div class="card">
   <h2>فایل تنظیمات</h2>
   <p class="subtle">تنظیمات در فایل <strong>{{ admin_settings_file }}</strong> و فایل .env مربوطه ذخیره می‌شوند.</p>
+  {% if env_file_paths %}
+  <p class="subtle">فایل‌های محیطی هدف: {{ env_file_paths|join(", ") }}</p>
+  {% endif %}
 </div>
 {% endblock %}
