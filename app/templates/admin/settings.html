@@ -3,11 +3,17 @@
 {% block content %}
 <h1>تنظیمات و دیپلوی سایت</h1>
 <p class="hint">متغیرهای اصلی محیطی، فایل تنظیمات و مسیرهای استقرار در این بخش قابل اصلاح‌اند.</p>
-{% if request.query_params.get("saved") %}
+{% if saved %}
 <div class="toast success">تنظیمات با موفقیت ذخیره شد.</div>
 {% endif %}
-{% if request.query_params.get("error") %}
+{% if error %}
 <div class="toast error">خطا در ذخیره تنظیمات. لطفاً دوباره تلاش کنید.</div>
+{% endif %}
+{% if refreshed %}
+<div class="toast success">تنظیمات از .env.production بازخوانی شد.</div>
+{% endif %}
+{% if refresh_error %}
+<div class="toast error">خطا در بازخوانی تنظیمات.</div>
 {% endif %}
 <div class="card">
   <form method="post" action="/admin/settings">
@@ -50,6 +56,11 @@
       </select>
     </div>
     <button type="submit">ذخیره تنظیمات دیپلوی</button>
+  </form>
+</div>
+<div class="card">
+  <form method="post" action="/admin/settings/refresh">
+    <button type="submit" class="ghost-button">⇄ بارگذاری مجدد از .env.production</button>
   </form>
 </div>
 <div class="card">

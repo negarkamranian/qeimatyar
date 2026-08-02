@@ -204,6 +204,10 @@ def admin_settings_page(request: Request) -> HTMLResponse:
         context={
             **_admin_context(request, "settings"),
             "env_file_paths": [str(p) for p in _env_file_paths()],
+            "saved": bool(request.query_params.get("saved")),
+            "error": bool(request.query_params.get("error")),
+            "refreshed": bool(request.query_params.get("refreshed")),
+            "refresh_error": bool(request.query_params.get("refresh_error")),
         },
     )
 
@@ -244,6 +248,18 @@ def admin_update_settings(
         return response
     response = RedirectResponse("/admin/settings?saved=1", status_code=303)
     return response
+
+
+@app.post("/admin/settings/refresh")
+def admin_refresh_settings(request: Request) -> RedirectResponse:
+    if request is not None and not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    try:
+        refresh_settings()
+    except Exception:
+        logger.exception("Settings refresh failed")
+        return RedirectResponse("/admin/settings?refresh_error=1", status_code=303)
+    return RedirectResponse("/admin/settings?refreshed=1", status_code=303)
 
 
 @app.post("/admin/notifications/clear")

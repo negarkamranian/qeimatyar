@@ -5,8 +5,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    environment:
+      ENV_FILE_PRODUCTION: .env.production
     volumes:
       - app_data:/app/data
+      - ./.env.production:/app/.env.production:rw
     expose:
       - "8000"
     healthcheck:
