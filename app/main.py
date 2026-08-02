@@ -63,18 +63,37 @@ def _admin_session(request: Request | None) -> bool:
 
 def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
     users = rows(
-        """SELECT user_id, vendor_title, user_name, sync_status, last_synced_at, connected_at
-        FROM accounts ORDER BY connected_at DESC, user_id DESC""",
+        """SELECT a.user_id, a.vendor_id, a.vendor_title, a.user_name, a.sync_status,
+        a.last_synced_at, a.connected_at, a.sync_error, a.token_expires_at,
+        COUNT(mp.product_id) AS product_count,
+        GROUP_CONCAT(mp.title, ' | ') AS product_titles
+        FROM accounts a
+        LEFT JOIN merchant_products mp ON mp.user_id = a.user_id
+        GROUP BY a.user_id
+        ORDER BY a.connected_at DESC, a.user_id DESC""",
     )
     for user in users:
         user["is_active"] = user.get("sync_status") in {"running", "queued"}
+        user["products_synced"] = user.get("product_count", 0) > 0
+        user["product_titles"] = user.get("product_titles") or ""
+        user["token_expired"] = _is_token_expired(user.get("token_expires_at"))
     return {
         "settings": settings,
         "admin_settings_file": settings.admin_settings_file,
         "users": users,
         "user_count": len(users),
         "active_users": sum(1 for user in users if user["is_active"]),
+        "synced_users": sum(1 for user in users if user["products_synced"]),
     }
+
+
+def _is_token_expired(expires_at: str | None) -> bool:
+    if not expires_at:
+        return True
+    try:
+        return datetime.fromisoformat(expires_at) <= datetime.now(timezone.utc)
+    except ValueError:
+        return True
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
@@ -147,6 +166,7 @@ def admin_user_detail(request: Request, user_id: int) -> HTMLResponse:
             **_admin_context(request, "users"),
             "account": account[0],
             "products": products,
+            "now_iso": now_iso(),
         },
     )
 

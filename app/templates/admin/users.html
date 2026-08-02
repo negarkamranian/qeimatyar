@@ -9,21 +9,56 @@
       <thead>
         <tr>
           <th>نام غرفه</th>
+          <th>شناسه غرفه</th>
           <th>کاربر</th>
+          <th>محصولات</th>
           <th>وضعیت</th>
           <th>آخرین همگام‌سازی</th>
+          <th>اتصال</th>
+          <th>خطا</th>
         </tr>
       </thead>
       <tbody>
         {% for user in users %}
         <tr>
-          <td><a href="/admin/users/{{ user.user_id }}">{{ user.vendor_title }}</a></td>
-          <td>{{ user.user_name or '-' }}</td>
-          <td><span class="badge {% if not user.is_active %}inactive{% endif %}">{{ 'در حال کار' if user.is_active else 'غیرفعال' }}</span></td>
+          <td>
+            <a href="https://basalam.com/s/{{ user.vendor_id }}" target="_blank" rel="noopener"
+               style="color:#0f766e;font-weight:600;text-decoration:none;"
+               title="باز شدن در باسلام">
+              {{ user.vendor_title }}
+              <span aria-hidden="true"> ↗</span>
+            </a>
+          </td>
+          <td class="subtle">{{ user.vendor_id }}</td>
+          <td><a href="/admin/users/{{ user.user_id }}">{{ user.user_name or '-' }}</a></td>
+          <td>
+            {% if user.products_synced %}
+              <a href="/admin/users/{{ user.user_id }}" class="badge" title="مشاهده همه محصولات">
+                {{ user.product_count }} محصول
+              </a>
+              {% if user.product_titles %}
+                <div class="subtle" style="font-size:.8rem;margin-top:4px;">
+                  {{ user.product_titles[:120] }}{% if user.product_titles|length > 120 %}…{% endif %}
+                </div>
+              {% endif %}
+            {% else %}
+              <span class="badge inactive">هنوز همگام‌سازی نشده</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge {% if not user.is_active %}inactive{% endif %}">
+              {{ 'در حال کار' if user.is_active else 'غیرفعال' }}
+            </span>
+            {% if user.token_expired and not user.is_active %}
+              <div class="subtle" style="font-size:.8rem;margin-top:4px;">توکن منقضی شده</div>
+            {% endif %}
+          </td>
           <td>{{ user.last_synced_at or 'هنوز' }}</td>
+          <td class="subtle">{{ user.connected_at or '-' }}</td>
+          <td class="subtle">{% if user.sync_error %}{{ user.sync_error }}{% else %}—{% endif %}</td>
         </tr>
         {% else %}
-        <tr><td colspan="4" class="hint">هنوز کاربری متصل نشده است.</td></tr>
+        <tr><td colspan="8" class="hint">هنوز کاربری متصل نشده است.</td></tr>
         {% endfor %}
       </tbody>
     </table>
