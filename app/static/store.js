@@ -48,6 +48,7 @@ function recordButtonClick(buttonName, productId) {
       button_name: buttonName,
       product_id: productId,
       store_id: state.storeId,
+      product_url: window.location.href || null,
     }),
   }).catch(() => {});
 }

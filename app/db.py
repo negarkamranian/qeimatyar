@@ -138,6 +138,7 @@ def init_db() -> None:
                 button_name TEXT NOT NULL,
                 product_id TEXT,
                 store_id TEXT,
+                product_url TEXT,
                 client_id TEXT,
                 user_id INTEGER,
                 created_at TEXT NOT NULL
@@ -183,6 +184,12 @@ def init_db() -> None:
         for column, statement in migrations.items():
             if column not in account_columns:
                 db.execute(statement)
+
+        button_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(button_click_metrics)").fetchall()
+        }
+        if "product_url" not in button_columns:
+            db.execute("ALTER TABLE button_click_metrics ADD COLUMN product_url TEXT")
 
 
 def seed_demo() -> None:

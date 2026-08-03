@@ -25,8 +25,16 @@
     <strong>{{ similarity_dislikes }}</strong>
   </div>
   <div class="summary-card">
-    <div class="hint">کلیک دکمه بروزرسانی قیمت</div>
-    <strong>{{ total_clicks }}</strong>
+    <div class="hint">تحلیل بازار از غرفه</div>
+    <strong>{{ button_counts.get("merchant_analysis", 0) }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">بروزرسانی قیمت در باسلام (غرفه)</div>
+    <strong>{{ button_counts.get("set_price_basalam_merchant", 0) }} + {{ button_counts.get("sync_products", 0) }} همگام‌سازی</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">بروزرسانی قیمت در باسلام (جست‌وجو)</div>
+    <strong>{{ button_counts.get("update_price_basalam", 0) }} + {{ button_counts.get("set_to_optimal_price", 0) }} بهینه</strong>
   </div>
   <div class="summary-card">
     <div class="hint">بازدید صفحات غرفه</div>
@@ -84,6 +92,33 @@
         </td>
         <td dir="ltr">{{ fb.target_url[:80] }}</td>
         <td>{{ fb.user_id or fb.client_id[:12] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="card">
+  <h2>آخرین کلیک‌های دکمه‌ها</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>زمان</th>
+        <th>دکمه</th>
+        <th>محصول</th>
+        <th>فروشگاه</th>
+        <th>آی‌دی کاربر</th>
+        <th>آی‌دی بازدیدکننده</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in recent_clicks %}
+      <tr>
+        <td>{{ c.created_at }}</td>
+        <td>{{ c.button_name }}</td>
+        <td dir="ltr">{{ c.product_url[:60] if c.product_url else c.product_id or "" }}</td>
+        <td>{{ c.store_id or "" }}</td>
+        <td>{{ c.user_id or "" }}</td>
+        <td>{{ c.client_id[:12] if c.client_id else "" }}</td>
       </tr>
       {% endfor %}
     </tbody>

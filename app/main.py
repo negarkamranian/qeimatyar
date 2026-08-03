@@ -778,12 +778,13 @@ def record_button_click(
     with connection() as db:
         db.execute(
             """INSERT INTO button_click_metrics
-            (button_name, product_id, store_id, client_id, user_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)""",
+            (button_name, product_id, store_id, product_url, client_id, user_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 payload.button_name,
                 str(payload.product_id) if payload.product_id else None,
                 payload.store_id,
+                payload.product_url,
                 client_id,
                 user_id,
                 now_iso(),
@@ -813,6 +814,12 @@ def admin_metrics_page(request: Request) -> HTMLResponse:
         total_clicks = db.execute("SELECT COUNT(*) FROM button_click_metrics").fetchone()[0]
         total_store_views = db.execute("SELECT COUNT(*) FROM store_page_views").fetchone()[0]
         total_searches = db.execute("SELECT COUNT(*) FROM search_analytics").fetchone()[0]
+        button_counts = {
+            row["button_name"]: row["cnt"]
+            for row in db.execute(
+                "SELECT button_name, COUNT(*) AS cnt FROM button_click_metrics GROUP BY button_name"
+            ).fetchall()
+        }
         recent_searches = [
             dict(row)
             for row in db.execute(
@@ -825,6 +832,13 @@ def admin_metrics_page(request: Request) -> HTMLResponse:
             for row in db.execute(
                 """SELECT feedback_type, rating, target_url, user_id, client_id, created_at
                 FROM user_feedback ORDER BY created_at DESC LIMIT 50"""
+            ).fetchall()
+        ]
+        recent_clicks = [
+            dict(row)
+            for row in db.execute(
+                """SELECT button_name, product_id, store_id, product_url, user_id, client_id, created_at
+                FROM button_click_metrics ORDER BY created_at DESC LIMIT 50"""
             ).fetchall()
         ]
     return templates.TemplateResponse(
@@ -840,8 +854,10 @@ def admin_metrics_page(request: Request) -> HTMLResponse:
             "total_clicks": total_clicks,
             "total_store_views": total_store_views,
             "total_searches": total_searches,
+            "button_counts": button_counts,
             "recent_searches": recent_searches,
             "recent_feedback": recent_feedback,
+            "recent_clicks": recent_clicks,
         },
     )
 

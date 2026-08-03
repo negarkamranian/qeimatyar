@@ -357,12 +357,15 @@ async function sendFeedback(feedbackType, rating) {
 
 async function recordButtonClick(buttonName, productId = null) {
   try {
+    const sourceProduct = currentAnalysis?.source_product;
     await fetch("/api/metrics/button-click", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         button_name: buttonName,
         product_id: productId,
+        store_id: sourceProduct?.store_id || currentAnalysis?.store_id || null,
+        product_url: sourceProduct?.product_url || currentAnalysis?.product_url || window.location.href || null,
       }),
     });
   } catch {

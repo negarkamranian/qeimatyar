@@ -76,6 +76,8 @@ async function recordButtonClick(buttonName, productId = null) {
       body: JSON.stringify({
         button_name: buttonName,
         product_id: productId,
+        store_id: window.STORE_ID || null,
+        product_url: window.location.href || null,
       }),
     });
   } catch {
