@@ -13,7 +13,6 @@ let merchantContext = {
   currentPrice: null,
   productId: Number(pageParams.get("product_id")) || null,
 };
-
 const toman = value => new Intl.NumberFormat("fa-IR").format(Math.round(value || 0));
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
 
@@ -89,6 +88,37 @@ function applySliderMarkerLayout() {
   priceSlider.style.setProperty("--quick-offset", `${rows.quick * 16}px`);
   priceSlider.style.setProperty("--patient-offset", `${rows.patient * 16}px`);
   priceSlider.style.setProperty("--marker-rows", rows.count);
+}
+
+async function fetchSampleProducts() {
+  const container = document.querySelector("#sample-products");
+  if (!container) return;
+  try {
+    const response = await fetch("/api/sample-products");
+    if (!response.ok) return;
+    const body = await response.json();
+    const products = body.products || [];
+    container.innerHTML = '<span>یا روی یکی از محصولات نمونه بزنید:</span>';
+    products.forEach(product => {
+      const image = product.image_url
+        ? escapeHtml(product.image_url)
+        : "";
+      const imageNode = image
+        ? `<img class="sample-image" src="${image}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+        : `<span class="sample-image-placeholder">◇</span>`;
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "sample-product-card";
+      card.innerHTML = `${imageNode}<strong title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</strong>`;
+      card.addEventListener("click", () => {
+        document.querySelector("#product-name").value = product.url;
+        analyze(product.url);
+      });
+      container.appendChild(card);
+    });
+  } catch {
+    // best-effort: fall back to no sample cards
+  }
 }
 
 async function analyze(productName) {
@@ -403,14 +433,7 @@ function updateSelectedPrice() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  showSuggestions();
-});
-
-document.querySelectorAll("[data-example]").forEach(button => {
-  button.addEventListener("click", () => {
-    document.querySelector("#product-name").value = button.dataset.example;
-    analyze(button.dataset.example);
-  });
+  fetchSampleProducts();
 });
 
 document.querySelector("#price-slider").addEventListener("input", updateSelectedPrice);
@@ -426,52 +449,18 @@ document.querySelector("#new-search").addEventListener("click", () => {
   document.querySelector("#merchant-price-note").hidden = true;
   showView("search");
   document.querySelector("#product-name").focus();
-  showSuggestions();
 });
 document.querySelector("#retry-button").addEventListener("click", () => {
   showView("search");
   document.querySelector("#product-name").focus();
-  showSuggestions();
 });
 
-const suggestionsBox = document.querySelector("#suggestions-box");
-const suggestionsClose = document.querySelector("#close-suggestions");
 const searchText = document.querySelector("#product-name");
-
-function showSuggestions() {
-  if (!currentAnalysis && searchText.value.trim().length === 0) {
-    suggestionsBox.hidden = false;
-  }
-}
-
-function hideSuggestions() {
-  suggestionsBox.hidden = true;
-}
-
-searchText.addEventListener("focus", showSuggestions);
-searchText.addEventListener("input", () => {
-  if (searchText.value.trim().length > 0) {
-    suggestionsBox.hidden = true;
-  } else {
-    suggestionsBox.hidden = false;
-  }
-});
-
-suggestionsClose.addEventListener("click", hideSuggestions);
-
-document.querySelectorAll(".suggestion-chip").forEach(chip => {
-  chip.addEventListener("click", () => {
-    searchText.value = chip.dataset.example;
-    hideSuggestions();
-    analyze(chip.dataset.example);
-  });
-});
 
 document.querySelector("#search-form").addEventListener("submit", event => {
   event.preventDefault();
   const productName = searchText.value.trim();
   if (productName.length >= 2) {
-    hideSuggestions();
     analyze(productName);
   }
 });

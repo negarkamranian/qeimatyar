@@ -40,48 +40,31 @@
       </div>
 
       <div class="query-helper">
-        <strong>نکته نوشتن جست‌وجو</strong>
-        <p>برای دقیق‌ترین نتیجه، نام محصول را کامل وارد کنید: برند، مدل، مقدار یا واحد (مثلاً «عسل آویشن ۹۰۰ گرم» یا «کاور آیفون ۱۵ پرو مگا»). هر چه توضیح بیشتر بدید، قیمت‌های مرتبط دقیق‌تر انتخاب می‌شوند.</p>
+        <strong>چگونه جست‌وجو کنیم؟</strong>
+        <p>لینک محصول خود را از باسلام در قالب <code>https://basalam.com/نام‌فروشگاه/product/شناسه</code> وارد کنید. قیمت‌های مشابه در ترب، دیجی‌کالا و باسلام یافت می‌شوند و بازه مناسب فروش پیشنهاد می‌شود.</p>
       </div>
 
       <form id="search-form" class="search-box">
-        <label for="product-name">نام یا لینک محصول</label>
+        <label for="product-name">لینک محصول باسلام</label>
         <div class="search-control">
           <span class="search-icon" aria-hidden="true">⌕</span>
           <input
             id="product-name"
             name="product_name"
-            type="text"
+            type="url"
             minlength="2"
             maxlength="1000"
             autocomplete="off"
-            placeholder="نام محصول یا لینک آن در باسلام، ترب یا دیجی‌کالا"
+            placeholder="https://basalam.com/نام-فروشگاه/product/شناسه"
             required
           >
-          <button type="submit">محاسبه قیمت</button>
+          <button type="submit">بررسی قیمت</button>
         </div>
-        <div class="examples">
-          <span>نمونه:</span>
-          <button type="button" data-example="عسل طبیعی آویشن ۹۰۰ گرم">عسل آویشن ۹۰۰ گرم</button>
-          <button type="button" data-example="کاور آیفون">کاور آیفون</button>
-          <button type="button" data-example="هدفون بی سیم انکر Soundcore Q30">هدفون Anker Q30</button>
+
+        <div id="sample-products" class="sample-products">
+          <span>یا روی یکی از محصولات نمونه بزنید:</span>
         </div>
       </form>
-
-      <div id="suggestions-box" class="suggestions-box">
-        <div class="suggestions-header">
-          <span>محصولات مشابه پیشنهادی</span>
-          <button type="button" id="close-suggestions" class="suggestions-close" aria-label="بستن">✕</button>
-        </div>
-        <div class="suggestions-grid">
-          <button type="button" class="suggestion-chip" data-example="عسل طبیعی آویشن ۹۰۰ گرم">عسل آویشن ۹۰۰ گرم</button>
-          <button type="button" class="suggestion-chip" data-example="کاور آیفون ۱۵ پرو مگا">کاور آیفون ۱۵ پرو مگا</button>
-          <button type="button" class="suggestion-chip" data-example="شارژر سریع USB-C ۲۵ وات">شارژر USB-C ۲۵ وات</button>
-          <button type="button" class="suggestion-chip" data-example="هدفون بی‌سیم انکر Soundcore Q30">هدفون Anker Q30</button>
-          <button type="button" class="suggestion-chip" data-example="قاشق غذاخوری فلزی 16 قطعی">قاشق غذاخوری فلزی 16 قطعی</button>
-          <button type="button" class="suggestion-chip" data-example="کرم مراقبت از چرخه بارداری 500 میلی‌گرم">کرم مراقبت از باردار 500mg</button>
-        </div>
-      </div>
 
       <div class="trust-row" aria-label="منابع قیمت">
         <div><span class="source-logo torob">ت</span><strong>ترب</strong><small>مقایسه فروشگاه‌ها</small></div>

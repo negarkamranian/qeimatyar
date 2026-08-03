@@ -495,6 +495,38 @@ class SearchRateLimiter:
 search_rate_limiter = SearchRateLimiter()
 
 
+SAMPLE_PRODUCT_URLS = [
+    "https://basalam.com/2sotshop/product/2606888",
+    "https://basalam.com/bookmarkett/product/17272424",
+    "https://basalam.com/baneh_makeup/product/21037201",
+    "https://basalam.com/alirezahoseinpor/product/14719190",
+    "https://basalam.com/pantea_shoes/product/9052937",
+    "https://basalam.com/khoshechin/product/932142",
+]
+
+
+@app.get("/api/sample-products")
+async def sample_products() -> dict[str, Any]:
+    async def fetch_one(url: str) -> dict[str, Any]:
+        product_id = _basalam_product_id_from_url(url)
+        if product_id:
+            try:
+                data = await fetch_basalam_product(product_id)
+                if data:
+                    return {
+                        "url": url,
+                        "title": data.get("title", ""),
+                        "image_url": data.get("image_url", ""),
+                        "price": data.get("price", 0),
+                    }
+            except Exception as exc:
+                logger.warning("Sample product fetch failed for %s: %s", url, exc)
+        return {"url": url, "title": "", "image_url": "", "price": 0}
+
+    results = await asyncio.gather(*(fetch_one(url) for url in SAMPLE_PRODUCT_URLS))
+    return {"products": results}
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     user_id = read_session(request.cookies.get(COOKIE_NAME))
