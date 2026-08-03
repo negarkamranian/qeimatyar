@@ -35,6 +35,7 @@
   </div>
   <div class="test-row">
     <button id="test-llm" class="ghost-button">تست اتصال AvalAI LLM</button>
+    <input id="llm-test-prompt" type="text" class="ghost-button" style="max-width:240px;font-size:11px;padding:6px 8px;" placeholder="متن تست (اختیاری)" value="سلام، امروز چه خبر؟">
     <span id="result-llm" class="test-result">—</span>
   </div>
 </div>
@@ -52,7 +53,7 @@
 {% block extra_data %}
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  async function runTest(buttonId, resultId, endpoint, options = {}) {
+  async function runTest(buttonId, resultId, endpoint, hasPrompt = false) {
     const btn = document.getElementById(buttonId);
     const result = document.getElementById(resultId);
     btn.disabled = true;
@@ -60,7 +61,16 @@ document.addEventListener("DOMContentLoaded", function() {
     result.textContent = "در حال بررسی…";
     result.className = "test-result testing";
     try {
-      const response = await fetch(endpoint, { method: "POST", ...options });
+      const options = { method: "POST" };
+      if (hasPrompt) {
+        const promptInput = document.getElementById("llm-test-prompt");
+        const formData = new FormData();
+        if (promptInput && promptInput.value.trim()) {
+          formData.append("prompt", promptInput.value.trim());
+        }
+        options.body = formData;
+      }
+      const response = await fetch(endpoint, options);
       const data = await response.json();
       if (data.ok) {
         result.textContent = data.message || "موفق";
@@ -84,12 +94,12 @@ document.addEventListener("DOMContentLoaded", function() {
   const tests = [
     {id: "test-basalam", result: "result-basalam", endpoint: "/admin/test/basalam"},
     {id: "test-marketplaces", result: "result-marketplaces", endpoint: "/admin/test/marketplace"},
-    {id: "test-llm", result: "result-llm", endpoint: "/admin/test/llm"},
+    {id: "test-llm", result: "result-llm", endpoint: "/admin/test/llm", hasPrompt: true},
   ];
   tests.forEach(t => {
     const btn = document.getElementById(t.id);
     btn.dataset.original = btn.textContent;
-    btn.addEventListener("click", () => runTest(t.id, t.result, t.endpoint));
+    btn.addEventListener("click", () => runTest(t.id, t.result, t.endpoint, t.hasPrompt));
   });
 });
 </script>

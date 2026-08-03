@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 async def _call_llm(prompt: str, max_tokens: int = 8000) -> str | None:
-    """Make an LLM API call, trying multiple endpoint formats.
+    """Make an LLM API call to AvalAI using the Responses API format.
 
-    Tries /v1/chat/completions (OpenAI format) first,
-    then falls back to /v1/responses (AvalAI native format).
+    Uses POST /responses (matching OpenAI's responses.create pattern) first,
+    then falls back to /chat/completions if the Responses endpoint is unsupported.
     Returns the response text or None on failure.
     """
     if not settings.avalai_api_key:
@@ -34,28 +34,6 @@ async def _call_llm(prompt: str, max_tokens: int = 8000) -> str | None:
     )
 
     try:
-        try:
-            response = await client.post(
-                "/chat/completions",
-                json={
-                    "model": settings.avalai_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": max_tokens,
-                    "temperature": 0.1,
-                },
-            )
-            if response.status_code == 200:
-                data = response.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                if content:
-                    return content
-            elif response.status_code == 400:
-                error_body = response.text[:500]
-                logger.warning("LLM /chat/completions returned 400: %s", error_body)
-                raise _LLMFormatError(error_body)
-        except _LLMFormatError:
-            pass
-
         response = await client.post(
             "/responses",
             json={
@@ -67,34 +45,44 @@ async def _call_llm(prompt: str, max_tokens: int = 8000) -> str | None:
         )
         if response.status_code == 200:
             data = response.json()
-            content = data.get("output") or data.get("output_text", "")
-            if not content and isinstance(data.get("output"), (list, dict)):
-                if isinstance(data.get("output"), list):
-                    content = "".join(
+            content = data.get("output_text") or data.get("output", "")
+            if not content and isinstance(data.get("output"), list):
+                content = "".join(
+                    (
                         item.get("content", [{}])[0].get("text", "")
                         if isinstance(item, dict)
                         else ""
-                        for item in data["output"]
                     )
-                else:
-                    content = str(data.get("output", ""))
-            return content
-        else:
-            logger.warning(
-                "LLM /responses returned %d: %s",
-                response.status_code,
-                response.text[:500],
-            )
-            return None
+                    for item in data["output"]
+                )
+            return content if content else None
+        logger.warning(
+            "LLM /responses returned %d: %s",
+            response.status_code,
+            response.text[:500],
+        )
+        # Fall back to /chat/completions (OpenAI-compatible format)
+        response = await client.post(
+            "/chat/completions",
+            json={
+                "model": settings.avalai_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "temperature": 0.1,
+            },
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        logger.warning(
+            "LLM /chat/completions fallback also failed: %d", response.status_code
+        )
+        return None
     except httpx.HTTPError as exc:
         logger.warning("LLM API call failed: %s", exc)
         return None
     finally:
         await client.aclose()
-
-
-class _LLMFormatError(Exception):
-    pass
 
 
 async def optimize_search_query(source_product: dict[str, Any]) -> str:

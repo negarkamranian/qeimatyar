@@ -79,6 +79,19 @@
     <button type="submit">ذخیره تنظیمات دیپلوی</button>
   </form>
 </div>
+
+<div class="card">
+  <h2>تست ارتباط LLM</h2>
+  <p class="subtle">کلید API، آدرس پایه و مدل را ذخیره کنید، سپس متن دلخواه یا پیام پیش‌فرض را برای تست بفرستید.</p>
+  <form id="llm-test-form" method="post" action="/admin/test/llm">
+    <div class="row">
+      <label for="test_prompt">متن تست</label>
+      <textarea id="test_prompt" name="prompt" rows="2" maxlength="500" placeholder="سلام، امروز چه خبر؟">سلام، امروز چه خبر؟</textarea>
+    </div>
+    <button type="submit" id="llm-test-button">بررسی اتصال LLM</button>
+  </form>
+  <div id="llm-test-result" class="llm-test-result" hidden></div>
+</div>
 <div class="card">
   <form method="post" action="/admin/settings/refresh">
     <button type="submit" class="ghost-button">⇄ بارگذاری مجدد از .env.production</button>
@@ -91,4 +104,62 @@
   <p class="subtle">فایل‌های محیطی هدف: {{ env_file_paths|join(", ") }}</p>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_data %}
+<style>
+.llm-test-result { margin-top: 12px; padding: 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+.llm-test-result.loading { background: #eff6ff; color: #1e40af; }
+.llm-test-result.success { background: #dcfce8; color: #166534; }
+.llm-test-result.error { background: #fee2e2; color: #991b1b; }
+</style>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const form = document.getElementById("llm-test-form");
+  const button = document.getElementById("llm-test-button");
+  const result = document.getElementById("llm-test-result");
+
+  if (!form) return;
+
+  form.addEventListener("submit", async function(e) {
+    e.preventDefault();
+    if (!button || !result) return;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "در حال تست…";
+    result.hidden = false;
+    result.className = "llm-test-result loading";
+    result.textContent = "در حال ارسال درخواست به AvalAI…";
+
+    try {
+      const formData = new FormData(form);
+      const response = await fetch("/admin/test/llm", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (data.ok) {
+        result.className = "llm-test-result success";
+        result.innerHTML = "<strong>✓ موفق</strong><br>"
+          + "مدل: <code>" + (data.model || "—") + "</code><br>"
+          + "آدرس: <code>" + (data.base_url || "—") + "</code><br>"
+          + "پرامپت: " + (data.prompt || "—") + "<br>"
+          + "پاسخ: " + (data.response || "—");
+      } else {
+        result.className = "llm-test-result error";
+        result.innerHTML = "<strong>✗ ناموفق</strong><br>"
+          + "مدل: <code>" + (data.model || "—") + "</code><br>"
+          + "آدرس: <code>" + (data.base_url || "—") + "</code><br>"
+          + "پیام: " + (data.message || "—");
+      }
+    } catch (err) {
+      result.className = "llm-test-result error";
+      result.textContent = "خطا در ارتباط: " + err.message;
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
+});
+</script>
 {% endblock %}

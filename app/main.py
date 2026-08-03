@@ -299,26 +299,32 @@ async def test_marketplace_connection(request: Request) -> dict[str, Any]:
 
 
 @app.post("/admin/test/llm")
-async def test_llm_connection(request: Request) -> dict[str, Any]:
+async def test_llm_connection(
+    request: Request,
+    prompt: str | None = Form(default=None),
+) -> dict[str, Any]:
     if not _admin_session(request):
         raise HTTPException(401, "دسترسی مجاز نیست.")
     if not settings.avalai_api_key:
         return {"ok": False, "message": "کلید API AvalAI تنظیم نشده است.", "llm_configured": False}
     from app.llm import _call_llm
 
-    content = await _call_llm("سلام، امروز چه خبر؟", max_tokens=20)
+    test_prompt = prompt or "سلام، امروز چه خبر؟"
+    content = await _call_llm(test_prompt, max_tokens=200)
     if content:
         return {
             "ok": True,
             "model": settings.avalai_model,
             "base_url": settings.avalai_base_url,
-            "response": content[:100],
-            "message": "اتصال موفق (از /responses یا /chat/completions استفاده شد)",
+            "prompt": test_prompt,
+            "response": content[:200],
+            "message": "اتصال موفق (Responses API)",
         }
     return {
         "ok": False,
         "model": settings.avalai_model,
         "base_url": settings.avalai_base_url,
+        "prompt": test_prompt,
         "message": "اتصال ناموفق — لاگ سرور را بررسی کنید (کلید API یا نام مدل ممکن است اشتباه باشد)",
     }
 
