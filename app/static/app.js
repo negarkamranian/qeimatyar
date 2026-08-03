@@ -268,6 +268,7 @@ function renderResult(data) {
   setupFeedbackButtons();
   setupUseRecommendedButton();
   setupUpdateBasalamButton();
+  setupSliderButtons();
 }
 
 function setupFeedbackButtons() {
@@ -303,6 +304,38 @@ function setupUseRecommendedButton() {
     updateSelectedPrice();
     recordButtonClick("use_recommended_price");
   };
+}
+
+function setupSliderButtons() {
+  const optimalBtn = document.querySelector("#set-to-optimal");
+  const basalamBtn = document.querySelector("#update-in-basalam");
+  const sourceProduct = currentAnalysis?.source_product;
+
+  if (optimalBtn) {
+    optimalBtn.onclick = () => {
+      const slider = document.querySelector("#price-slider");
+      const recommended = Number(currentAnalysis?.analysis?.recommended || 0);
+      slider.value = recommended;
+      updateSelectedPrice();
+      recordButtonClick("set_to_optimal_price");
+    };
+  }
+
+  if (basalamBtn) {
+    if (sourceProduct && sourceProduct.product_id) {
+      basalamBtn.hidden = false;
+      basalamBtn.onclick = () => {
+        recordButtonClick("update_price_basalam", sourceProduct.product_id);
+        window.open(
+          `https://basalam.com/vendor/products/${sourceProduct.product_id}`,
+          "_blank",
+          "noopener",
+        );
+      };
+    } else {
+      basalamBtn.hidden = true;
+    }
+  }
 }
 
 async function sendFeedback(feedbackType, rating) {
@@ -394,6 +427,8 @@ function computeElasticity(value, recommended, low, high) {
   };
 }
 
+const TOLERANCE = 0.01;
+
 function updateSelectedPrice() {
   if (!currentAnalysis) return;
   const slider = document.querySelector("#price-slider");
@@ -423,7 +458,7 @@ function updateSelectedPrice() {
     document.querySelector("#signal-title").textContent = "قیمت منصفانه";
     document.querySelector("#signal-copy").textContent = "در مرکز قیمت‌های مشابه بازار قرار دارید.";
     slider.style.setProperty("--thumb", "var(--teal)");
-    selectedPriceEl.style.color = value === recommended ? "var(--green)" : "var(--ink)";
+    selectedPriceEl.style.color = Math.abs(value - recommended) < TOLERANCE ? "var(--green)" : "var(--ink)";
   } else {
     signal.classList.add("patient");
     document.querySelector("#signal-title").textContent = "فروش صبورانه";
@@ -436,7 +471,7 @@ function updateSelectedPrice() {
   const riskTitle = document.querySelector("#risk-title");
   const riskCopy = document.querySelector("#risk-copy");
   priceRisk.classList.remove("neutral", "good", "warning", "danger");
-  if (value === recommended) {
+  if (Math.abs(value - recommended) < TOLERANCE) {
     priceRisk.classList.add("good");
     riskTitle.textContent = "قیمت پیشنهادی بهینه";
     riskCopy.textContent = "شما دقیقاً روی قیمت پیشنهادی قیمت‌یار هستید. در این نقطه، تعادل مناسبی بین تقاضا و درآمد حفظ می‌شود.";

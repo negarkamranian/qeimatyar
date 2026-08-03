@@ -243,6 +243,16 @@ h1, h2, p { margin-top: 0; }
 .slider-prices span { position: absolute; white-space: nowrap; }
 .slider-prices span:first-child { left: var(--quick-position); top: var(--quick-offset); transform: translateX(-50%); }
 .slider-prices span:last-child { left: var(--patient-position); top: var(--patient-offset); transform: translateX(-50%); }
+.slider-buttons { display: flex; gap: 8px; margin-top: 14px; }
+.slider-btn {
+  flex: 1; border: 0; border-radius: 8px; padding: 9px 12px;
+  background: var(--green); color: #fff; font-size: 10px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+}
+.slider-btn:hover { background: #216251; }
+.slider-btn.basalam-btn { background: #0f766e; }
+.slider-btn.basalam-btn:hover { background: #0d655a; }
+.slider-btn span { font-size: 12px; }
 #price-slider {
   --quick-stop: 33%;
   --patient-start: 67%;

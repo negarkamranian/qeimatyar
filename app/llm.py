@@ -101,10 +101,15 @@ async def optimize_search_query(source_product: dict[str, Any]) -> str:
 Given the following product details, produce the single best search query string for finding this exact product on Persian marketplaces (Torob, Digikala, Basalam).
 
 Rules:
-- Include brand, model, key specs (capacity, color, size, weight, etc.)
-- Do NOT include prices, vendor names, or non-essential details
+- Include ONLY: brand, model, color, capacity, size, weight, count/pack, and key technical specs
+- EXCLUDE: prices, vendor/store names, "خرید", "قیمت", "از غرفه", "پدیده پلاس", "همراه", "اصل", "وارداتی", and any promotional or non-essential phrases
+- Remove all vendor/shop references (e.g. "پدیده پلاس", "فروشگاه", "غرفه")
+- Remove all price-related words (e.g. "خرید", "قیمت", "تخفیف")
 - Keep it concise (under 100 characters)
 - Output ONLY the query text, no formatting
+
+Example input title: "دکوراتیو پدیده پلاس مدل پروانه 14 عددی از غرفه پدیده پلاس"
+Example output: "دکوراتیو مدل پروانه 14 عددی"
 
 Product details:
 {context}
