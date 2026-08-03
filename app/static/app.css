@@ -280,3 +280,52 @@ footer p { margin: 0; }
   .listing-card:nth-child(n+5) { display: none; }
   .listing-grid.expanded .listing-card { display: flex; }
 }
+
+
+/* State Background Colors (persist outside of editing mode) */
+.listing-card.state-like { 
+  background: #eaf5f1;
+  border-color: #b9d8cf;
+}
+.listing-card.state-dislike { 
+  background: #fff0f2;
+  border-color: #f5c2cb;
+}
+
+.listing-state-controls {
+  display: none;
+  gap: 6px;
+  margin-top: 10px;
+  justify-content: flex-end; 
+}
+
+.listing-grid.editing .listing-state-controls {
+  display: flex;
+}
+
+/* Small round-square buttons */
+.listing-state-btn {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+
+.listing-state-btn:hover { 
+  background: var(--paper); 
+}
+
+.listing-state-btn[data-state="like"]:hover { color: var(--green); border-color: var(--green); }
+.listing-state-btn[data-state="dislike"]:hover { color: var(--red); border-color: var(--red); }
+.listing-state-btn[data-state="unknown"]:hover { color: var(--blue); border-color: var(--blue); }
+
+.listing-card.state-like .listing-state-btn[data-state="like"] { background: var(--green); color: #fff; border-color: var(--green); }
+.listing-card.state-dislike .listing-state-btn[data-state="dislike"] { background: var(--red); color: #fff; border-color: var(--red); }
+.listing-card.state-unknown .listing-state-btn[data-state="unknown"] { background: var(--blue); color: #fff; border-color: var(--blue); }

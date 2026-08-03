@@ -170,7 +170,10 @@ function renderResult(data) {
 
   const listings = document.querySelector("#listings");
   listings.classList.remove("expanded");
-  listings.innerHTML = analysis.listings.map(item => {
+  listings.classList.remove("editing");
+  listings.innerHTML = analysis.listings.map((item, index) => {
+    item.userState = item.userState || "default";
+
     const href = safeUrl(item.url);
     const image = safeUrl(item.image_url);
     const imageNode = image
@@ -178,17 +181,25 @@ function renderResult(data) {
       : `<span class="image-placeholder">◇</span>`;
     const similarityPct = Math.round(Number(item.similarity) * 100);
     const simClass = similarityPct >= 80 ? "high" : similarityPct >= 50 ? "mid" : "low";
-    return `<a class="listing-card" href="${href}" target="_blank" rel="noopener noreferrer">
+    const stateClass = item.userState !== "default" ? `state-${item.userState}` : "";
+    return `<a class="listing-card ${stateClass}" href="${href}" target="_blank" rel="noopener noreferrer" data-index="${index}" data-current-state="${item.userState}">
       ${imageNode}
-      <span class="listing-info">
+      <span class="listing-info" style="flex: 1;">
         <strong title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
         <b>${toman(item.price)} تومان</b>
         <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ شباهت</small>
         <small>${escapeHtml(sourceNames[item.source] || item.source)}</small>
+        
+        <div class="listing-state-controls">
+          <div class="listing-state-btn" data-state="like" title="پسندیدن">✓</div>
+          <div class="listing-state-btn" data-state="unknown" title="نامشخص">؟</div>
+          <div class="listing-state-btn" data-state="dislike" title="نپسندیدن">✕</div>
+        </div>
       </span>
     </a>`;
   }).join("");
   document.querySelector("#toggle-listings").textContent = "نمایش همه";
+  document.querySelector("#edit-listings").textContent = "ویرایش";
 }
 
 function computeElasticity(value, recommended, low, high) {
@@ -327,6 +338,40 @@ document.querySelector("#toggle-listings").addEventListener("click", event => {
   const grid = document.querySelector("#listings");
   grid.classList.toggle("expanded");
   event.currentTarget.textContent = grid.classList.contains("expanded") ? "نمایش کمتر" : "نمایش همه";
+});
+document.querySelector("#edit-listings").addEventListener("click", event => {
+  const grid = document.querySelector("#listings");
+  grid.classList.toggle("editing");
+  event.currentTarget.textContent = grid.classList.contains("editing") ? "اتمام ویرایش" : "ویرایش";
+});
+document.querySelector("#listings").addEventListener("click", event => {
+  const grid = event.currentTarget;
+  const isEditing = grid.classList.contains("editing");
+  const card = event.target.closest(".listing-card");
+  
+  if (!card) return;
+  if (isEditing) { event.preventDefault(); }
+
+  const btn = event.target.closest(".listing-state-btn");
+  if (!btn || !isEditing) return;
+
+  const index = card.dataset.index;
+  const newState = btn.dataset.state;
+  const currentState = card.dataset.currentState;
+
+  // Toggle state logic
+  const finalState = currentState === newState ? "default" : newState;
+
+  card.classList.remove("state-like", "state-dislike", "state-unknown");
+  card.dataset.currentState = finalState;
+  
+  if (finalState !== "default") {
+    card.classList.add(`state-${finalState}`);
+  }
+
+  if (currentAnalysis && currentAnalysis.listings[index]) {
+    currentAnalysis.listings[index].userState = finalState;
+  }
 });
 window.addEventListener("resize", applySliderMarkerLayout);
 
