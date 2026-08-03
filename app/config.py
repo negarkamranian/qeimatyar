@@ -90,7 +90,11 @@ def _load_env_file(path: Path, *, override: bool = False) -> None:
 def refresh_settings() -> Settings:
     global settings
     prod_env = Path(os.getenv("ENV_FILE_PRODUCTION", ".env.production"))
-    _load_env_file(prod_env, override=True)
+    fallback_env = Path(os.getenv("ENV_FILE", ".env"))
+    if prod_env.is_file():
+        _load_env_file(prod_env, override=True)
+    elif fallback_env.is_file():
+        _load_env_file(fallback_env, override=False)
     new_settings = Settings()
     for field_name, value in new_settings.__dict__.items():
         setattr(settings, field_name, value)

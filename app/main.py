@@ -4,9 +4,9 @@ import asyncio
 import hmac
 import hashlib
 import json
+import logging
 import secrets
 import time
-import logging
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -19,6 +19,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
+
+import httpx
 
 from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token, fetch_basalam_product, fetch_basalam_store, _basalam_product_id_from_url, _basalam_store_id_from_url
 from app.config import refresh_settings, save_admin_overrides, settings
@@ -223,7 +225,20 @@ def admin_connectivity_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="admin/connectivity.html",
-        context=_admin_context(request, "connectivity"),
+        context={
+            **_admin_context(request, "connectivity"),
+            "status": {
+                "basalam_key_configured": bool(settings.client_id),
+                "basalam_secret_configured": bool(settings.client_secret),
+                "avalai_key_configured": bool(settings.avalai_api_key),
+                "avalai_base_url": settings.avalai_base_url,
+                "avalai_model": settings.avalai_model,
+                "llm_similarity_enabled": settings.llm_similarity_enabled,
+                "marketplace_trust_env": settings.marketplace_trust_env,
+                "demo_mode": settings.demo_mode,
+                "app_env": settings.app_env,
+            },
+        },
     )
 
 
@@ -250,9 +265,9 @@ async def test_basalam_connection(request: Request) -> dict[str, Any]:
         raise HTTPException(401, "دسترسی مجاز نیست.")
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(
+            response = await client.post(
                 "https://openapi.basalam.com/v1/products/search",
-                params={"q": "آیفون", "rows": 1},
+                json={"q": "آیفون", "rows": 1, "start": 0},
             )
             if response.status_code == 200:
                 data = response.json()
@@ -262,8 +277,9 @@ async def test_basalam_connection(request: Request) -> dict[str, Any]:
                 elif isinstance(data, dict):
                     count = len(data.get("data") or data.get("results") or [])
                 return {"ok": True, "status": response.status_code, "result_count": count, "message": "اتصال موفق"}
-            return {"ok": False, "status": response.status_code, "message": f"خطا: {response.status_code}"}
+            return {"ok": False, "status": response.status_code, "message": f"خطا: {response.status_code} — {response.text[:200]}"}
     except Exception as exc:
+        logger.warning("Basalam connectivity test failed: %s", exc)
         return {"ok": False, "status": 0, "message": str(exc)[:200]}
 
 
