@@ -24,6 +24,7 @@ from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
 from app.config import refresh_settings, save_admin_overrides, settings
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
+from app.llm import score_product_similarity
 from app.marketplaces import (
     analyze_listings,
     exclude_marketplace_product,
@@ -223,6 +224,10 @@ def admin_update_settings(
     app_log_level: str | None = Form(default=None),
     app_base_url: str | None = Form(default=None),
     demo_mode: str | None = Form(default=None),
+    avalai_api_key: str | None = Form(default=None),
+    avalai_base_url: str | None = Form(default=None),
+    avalai_model: str | None = Form(default=None),
+    llm_similarity_enabled: str | None = Form(default=None),
 ) -> RedirectResponse:
     if request is not None and not _admin_session(request):
         raise HTTPException(401, "دسترسی مجاز نیست.")
@@ -235,6 +240,10 @@ def admin_update_settings(
         "APP_LOG_LEVEL": app_log_level if isinstance(app_log_level, str) else str(settings.log_level),
         "APP_BASE_URL": app_base_url if isinstance(app_base_url, str) else str(settings.base_url),
         "DEMO_MODE": demo_mode if isinstance(demo_mode, str) else str(settings.demo_mode).lower(),
+        "AVALAI_API_KEY": str(avalai_api_key) if isinstance(avalai_api_key, str) and avalai_api_key else str(settings.avalai_api_key),
+        "AVALAI_BASE_URL": avalai_base_url if isinstance(avalai_base_url, str) and avalai_base_url else str(settings.avalai_base_url),
+        "AVALAI_MODEL": avalai_model if isinstance(avalai_model, str) and avalai_model else str(settings.avalai_model),
+        "LLM_SIMILARITY_ENABLED": llm_similarity_enabled if isinstance(llm_similarity_enabled, str) and llm_similarity_enabled else str(settings.llm_similarity_enabled).lower(),
     }
     try:
         save_admin_overrides(overrides)
@@ -444,7 +453,10 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
                 "basalam",
                 excluded_product_id,
             )
-        analysis = analyze_listings(listings)
+        llm_scores: dict[str, float] = {}
+        if settings.llm_similarity_enabled:
+            llm_scores = await score_product_similarity(query, listings)
+        analysis = analyze_listings(listings, llm_scores)
     except ValueError as exc:
         raise HTTPException(
             422,

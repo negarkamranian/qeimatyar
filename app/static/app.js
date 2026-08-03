@@ -176,14 +176,15 @@ function renderResult(data) {
     const imageNode = image
       ? `<img class="listing-image" src="${image}" alt="" loading="lazy" referrerpolicy="no-referrer">`
       : `<span class="image-placeholder">◇</span>`;
-    const similarityPct = Math.round(Number(item.similarity) * 100);
+    const similarityPct = Math.round(Number(item.llm_similarity ?? item.similarity) * 100);
     const simClass = similarityPct >= 80 ? "high" : similarityPct >= 50 ? "mid" : "low";
+    const simLabel = item.llm_similarity != null ? "امتیاز LLM" : "٪ شباهت";
     return `<a class="listing-card" href="${href}" target="_blank" rel="noopener noreferrer">
       ${imageNode}
       <span class="listing-info">
         <strong title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
         <b>${toman(item.price)} تومان</b>
-        <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ شباهت</small>
+        <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ ${simLabel}</small>
         <small>${escapeHtml(sourceNames[item.source] || item.source)}</small>
       </span>
     </a>`;

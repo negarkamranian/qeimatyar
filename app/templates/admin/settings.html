@@ -55,6 +55,27 @@
         <option value="false" {% if not settings.demo_mode %}selected{% endif %}>false</option>
       </select>
     </div>
+    <div class="row-divider"></div>
+    <h3 style="margin:0 0 8px;font-size:11px;color:#5b6b7f;">هوش مصنوعی ولیدیتیشن</h3>
+    <div class="row">
+      <label for="avalai_api_key">AVALAI_API_KEY</label>
+      <input id="avalai_api_key" name="avalai_api_key" type="password" value="" autocomplete="off" placeholder="کلید API AvalAI">
+    </div>
+    <div class="row">
+      <label for="avalai_base_url">AVALAI_BASE_URL</label>
+      <input id="avalai_base_url" name="avalai_base_url" type="url" value="{{ settings.avalai_base_url }}">
+    </div>
+    <div class="row">
+      <label for="avalai_model">AVALAI_MODEL</label>
+      <input id="avalai_model" name="avalai_model" type="text" value="{{ settings.avalai_model }}">
+    </div>
+    <div class="row">
+      <label for="llm_similarity_enabled">LLM_SIMILARITY_ENABLED</label>
+      <select id="llm_similarity_enabled" name="llm_similarity_enabled">
+        <option value="true" {% if settings.llm_similarity_enabled %}selected{% endif %}>true</option>
+        <option value="false" {% if not settings.llm_similarity_enabled %}selected{% endif %}>false</option>
+      </select>
+    </div>
     <button type="submit">ذخیره تنظیمات دیپلوی</button>
   </form>
 </div>

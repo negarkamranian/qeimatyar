@@ -36,6 +36,10 @@ class Settings:
         self.usdt_notification_enabled: bool = _bool("USDT_NOTIFICATION_ENABLED", True)
         self.usdt_notification_percent: float = float(os.getenv("USDT_NOTIFICATION_PERCENT", "1"))
         self.usdt_check_interval_minutes: int = int(os.getenv("USDT_CHECK_INTERVAL_MINUTES", "30"))
+        self.avalai_api_key: str = os.getenv("AVALAI_API_KEY", "")
+        self.avalai_base_url: str = os.getenv("AVALAI_BASE_URL", "https://api.avalai.ir/v1").rstrip("/")
+        self.avalai_model: str = os.getenv("AVALAI_MODEL", "gpt-5.6-luna")
+        self.llm_similarity_enabled: bool = _bool("LLM_SIMILARITY_ENABLED", bool(os.getenv("AVALAI_API_KEY", "")))
         self.admin_password: str = os.getenv("ADMIN_PASSWORD", "")
         self.admin_settings_file: str = os.getenv("ADMIN_SETTINGS_FILE", "data/admin_settings.json")
         self.admin_enabled: bool = _bool("ADMIN_ENABLED", bool(os.getenv("ADMIN_PASSWORD", "")))
@@ -62,6 +66,15 @@ def _apply_admin_overrides(target: Settings, overrides: dict[str, Any]) -> None:
             target.usdt_notification_percent = float(value)
         elif key == "USDT_CHECK_INTERVAL_MINUTES":
             target.usdt_check_interval_minutes = int(value)
+        elif key == "AVALAI_API_KEY":
+            target.avalai_api_key = str(value)
+            target.llm_similarity_enabled = _bool("LLM_SIMILARITY_ENABLED", bool(str(value)))
+        elif key == "AVALAI_BASE_URL":
+            target.avalai_base_url = str(value).rstrip("/")
+        elif key == "AVALAI_MODEL":
+            target.avalai_model = str(value)
+        elif key == "LLM_SIMILARITY_ENABLED":
+            target.llm_similarity_enabled = str(value).lower() in {"1", "true", "yes", "on"}
 
 
 def _env_file_paths() -> list[Path]:
