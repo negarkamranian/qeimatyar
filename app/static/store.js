@@ -51,6 +51,10 @@ function recordButtonClick(buttonName, productId) {
     }),
   }).catch(() => {});
 }
+function setPriceInBasalam(productId, price) {
+  recordButtonClick("set_price_basalam_store", productId);
+  window.open(`https://basalam.com/vendor/products/${productId}`, "_blank", "noopener");
+}
 
 function productRow(product) {
   const image = safeImage(product.image_url);
@@ -76,8 +80,11 @@ function productRow(product) {
     <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
     <div class="llm-info"><small>${hasLlm ? "🤖 LLM فعال" : "⚙️ توکن"} · برتر: ${escapeHtml(topMatch)}</small></div>
     <div class="product-actions">
-      <a class="analysis-link" href="${analysisUrl}">تحلیل بازار</a>
-      <button class="update-price-btn" onclick="recordButtonClick('store_update_price', ${product.product_id})">به‌روزرسانی در باسلام</button>
+      <a class="analysis-link" href="${analysisUrl}" onclick="recordButtonClick('store_analysis', ${product.product_id})">تحلیل بازار</a>
+      ${hasEstimate && analysis.recommended
+        ? `<button class="set-price-btn" onclick="setPriceInBasalam(${product.product_id}, ${analysis.recommended})">تنظیم قیمت در باسلام به ${toman(analysis.recommended)} تومان</button>`
+        : ""
+      }
     </div>
   </article>`;
 }
@@ -141,9 +148,5 @@ async function analyzeStore() {
 
 document.querySelector("#product-filter")?.addEventListener("input", renderProducts);
 document.querySelector("#analyze-store")?.addEventListener("click", analyzeStore);
-document.querySelector("#use-llm")?.addEventListener("change", () => {
-  document.querySelector("#use-llm").checked = false;
-  toast("قابلیت LLM در حالت آزمایشی است؛ ابتدا کلید API وارد کنید.", { title: "در دسترس نیست" });
-});
 
 loadStore().catch(error => toast(error.message || String(error)));

@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 import httpx
 
 from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token, fetch_basalam_product, fetch_basalam_store, _basalam_product_id_from_url, _basalam_store_id_from_url
-from app.config import refresh_settings, save_admin_overrides, settings
+from app.config import refresh_settings, save_admin_overrides, settings, _env_file_paths
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
 from app.llm import score_product_similarity, optimize_search_query
@@ -329,6 +329,55 @@ async def test_llm_connection(
     }
 
 
+@app.get("/admin/llm", response_class=HTMLResponse)
+def admin_llm_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/llm.html",
+        context={
+            **_admin_context(request, "llm"),
+        },
+    )
+
+
+@app.post("/admin/llm/save")
+def admin_save_llm_settings(
+    request: Request,
+    avalai_api_key: str | None = Form(default=None),
+    avalai_base_url: str | None = Form(default=None),
+    avalai_model: str | None = Form(default=None),
+    llm_similarity_enabled: str | None = Form(default=None),
+) -> RedirectResponse:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    if not avalai_model:
+        raise HTTPException(422, "نام مدل الزامی است.")
+    existing = {}
+    for env_path in _env_file_paths():
+        if env_path.is_file():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key, value = stripped.split("=", 1)
+                existing[key.strip()] = value.strip()
+            break
+    overrides = {
+        "AVALAI_API_KEY": avalai_api_key if avalai_api_key and avalai_api_key.strip() else existing.get("AVALAI_API_KEY", str(settings.avalai_api_key)),
+        "AVALAI_BASE_URL": avalai_base_url or str(settings.avalai_base_url),
+        "AVALAI_MODEL": avalai_model,
+        "LLM_SIMILARITY_ENABLED": llm_similarity_enabled or str(settings.llm_similarity_enabled).lower(),
+    }
+    try:
+        save_admin_overrides(overrides)
+    except Exception:
+        logger.exception("LLM settings save failed")
+        return RedirectResponse("/admin/llm?saved=0", status_code=303)
+    return RedirectResponse("/admin/llm?saved=1", status_code=303)
+
+
 @app.get("/admin/usdt", response_class=HTMLResponse)
 def admin_usdt_page(request: Request) -> HTMLResponse:
     if not _admin_session(request):
@@ -344,7 +393,6 @@ def admin_usdt_page(request: Request) -> HTMLResponse:
 def admin_settings_page(request: Request) -> HTMLResponse:
     if not _admin_session(request):
         return RedirectResponse("/admin/login")
-    from app.config import _env_file_paths
     return templates.TemplateResponse(
         request=request,
         name="admin/settings.html",
@@ -591,7 +639,7 @@ def store_page(request: Request, store_id: str) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="store.html",
-        context={"store_id": store_id},
+        context={"store_id": store_id, "settings": settings},
     )
 
 
@@ -650,6 +698,7 @@ async def store_analysis(
                     "product_id": item["product_id"] if product_id else 0,
                     "title": source_product.get("title", "") if source_product else item["title"],
                     "url": item["url"],
+                    "basalam_url": f"https://basalam.com/p/{item['product_id']}" if item.get("product_id") else "",
                     "image_url": source_product.get("image_url", "") if source_product else "",
                     "current_price": source_product.get("price", 0) if source_product else 0,
                     "stock": 0,
@@ -1154,6 +1203,7 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
         product["effective_min"] = product["user_min"] or product["market_low"]
         product["effective_max"] = product["user_max"] or product["market_high"]
         product["customized"] = bool(product["user_min"] or product["user_max"])
+        product["basalam_url"] = f"https://basalam.com/p/{product['product_id']}"
         if product["market_suggested"]:
             ready += 1
     return {
@@ -1166,6 +1216,52 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
             "product_limit": settings.merchant_product_limit,
         },
         "products": products,
+    }
+
+
+@app.post("/api/merchant/analyze-product/{product_id}")
+async def merchant_analyze_product(
+    product_id: int,
+    request: Request,
+) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    product_rows = rows(
+        """SELECT * FROM merchant_products WHERE user_id=? AND product_id=?""",
+        (user_id, product_id),
+    )
+    if not product_rows:
+        raise HTTPException(404, "محصول پیدا نشد.")
+    product = product_rows[0]
+    product_id_val = product["product_id"]
+    source_product: dict[str, Any] | None = None
+    search_query = product["title"]
+    try:
+        source_product = await fetch_basalam_product(product_id_val)
+        if source_product and source_product.get("title"):
+            search_query = source_product["title"]
+            if settings.llm_similarity_enabled and settings.avalai_api_key:
+                optimized = await optimize_search_query(source_product)
+                if optimized:
+                    search_query = optimized
+    except Exception as exc:
+        logger.warning("fetch_basalam_product failed for %s: %s", product_id_val, exc)
+
+    crawl = await market_crawler.search(search_query)
+    listings = exclude_marketplace_product(
+        crawl["listings"],
+        "basalam",
+        product_id_val,
+    )
+    llm_scores: dict[str, float] = {}
+    if settings.llm_similarity_enabled:
+        llm_scores = await score_product_similarity(search_query, listings, source_product)
+    analysis = analyze_listings(listings, llm_scores)
+    return {
+        "product_id": product_id_val,
+        "title": product["title"],
+        "source_product": source_product,
+        "analysis": analysis,
+        "basalam_edit_url": f"https://basalam.com/vendor/products/{product_id_val}",
     }
 
 

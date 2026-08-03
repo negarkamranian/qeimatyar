@@ -40,7 +40,6 @@ async def _call_llm(prompt: str, max_tokens: int = 8000) -> str | None:
                 "model": settings.avalai_model,
                 "input": prompt,
                 "max_tokens": max_tokens,
-                "temperature": 0.1,
             },
         )
         if response.status_code == 200:
@@ -68,7 +67,6 @@ async def _call_llm(prompt: str, max_tokens: int = 8000) -> str | None:
                 "model": settings.avalai_model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": max_tokens,
-                "temperature": 0.1,
             },
         )
         if response.status_code == 200:

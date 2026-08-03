@@ -1,0 +1,117 @@
+{% extends "admin/base.html" %}
+{% block title %}سرویس LLM (AvalAI) — پنل مدیریت{% endblock %}
+{% block content %}
+<h1>سرویس LLM (AvalAI)</h1>
+<p class="hint">پیکربندی و تست اتصال به AvalAI برای امتیازدهی شباهت محصول و بهینه‌سازی کوئری جست‌وجو.</p>
+
+{% if saved %}
+<div class="toast success">تنظیمات LLM با موفقیت ذخیره شد.</div>
+{% endif %}
+{% if saved == '0' %}
+<div class="toast error">خطا در ذخیره تنظیمات LLM.</div>
+{% endif %}
+
+<div class="card">
+  <h2>پیکربندی AvalAI</h2>
+  <form method="post" action="/admin/llm/save">
+    <div class="row">
+      <label for="avalai_api_key">AVALAI_API_KEY</label>
+      <input id="avalai_api_key" name="avalai_api_key" type="password" value="" autocomplete="off" placeholder="کلید API AvalAI">
+    </div>
+    <div class="row">
+      <label for="avalai_base_url">AVALAI_BASE_URL</label>
+      <input id="avalai_base_url" name="avalai_base_url" type="url" value="{{ settings.avalai_base_url }}">
+    </div>
+    <div class="row">
+      <label for="avalai_model">AVALAI_MODEL</label>
+      <input id="avalai_model" name="avalai_model" type="text" value="{{ settings.avalai_model }}">
+    </div>
+    <div class="row">
+      <label for="llm_similarity_enabled">LLM_SIMILARITY_ENABLED</label>
+      <select id="llm_similarity_enabled" name="llm_similarity_enabled">
+        <option value="true" {% if settings.llm_similarity_enabled %}selected{% endif %}>true</option>
+        <option value="false" {% if not settings.llm_similarity_enabled %}selected{% endif %}>false</option>
+      </select>
+    </div>
+    <button type="submit">ذخیره تنظیمات LLM</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>تست اتصال</h2>
+  <p class="subtle">پس از ذخیره، متن دلخواه یا پیام پیش‌فرض را برای تست بفرستید.</p>
+  <form id="llm-test-form" method="post" action="/admin/test/llm">
+    <div class="row">
+      <label for="test_prompt">متن تست</label>
+      <textarea id="test_prompt" name="prompt" rows="2" maxlength="500" placeholder="سلام، امروز چه خبر؟">سلام، امروز چه خبر؟</textarea>
+    </div>
+    <button type="submit" id="llm-test-button">بررسی اتصال LLM</button>
+  </form>
+  <div id="llm-test-result" class="llm-test-result" hidden></div>
+</div>
+
+<div class="card">
+  <h2>وضعیت فعلی</h2>
+  <table>
+    <tr><th>کلید API</th><td>{{ "✓ تنظیم شده" if settings.avalai_api_key else "✗ خالی" }}</td></tr>
+    <tr><th>آدرس پایه</th><td><code>{{ settings.avalai_base_url }}</code></td></tr>
+    <tr><th>مدل</th><td><code>{{ settings.avalai_model }}</code></td></tr>
+    <tr><th>شباهت LLM</th><td>{{ "✓ فعال" if settings.llm_similarity_enabled else "✗ غیرفعال" }}</td></tr>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_data %}
+<style>
+.llm-test-result { margin-top: 12px; padding: 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+.llm-test-result.loading { background: #eff6ff; color: #1e40af; }
+.llm-test-result.success { background: #dcfce8; color: #166534; }
+.llm-test-result.error { background: #fee2e2; color: #991b1b; }
+</style>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const form = document.getElementById("llm-test-form");
+  const button = document.getElementById("llm-test-button");
+  const result = document.getElementById("llm-test-result");
+  if (!form) return;
+  form.addEventListener("submit", async function(e) {
+    e.preventDefault();
+    if (!button || !result) return;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "در حال تست…";
+    result.hidden = false;
+    result.className = "llm-test-result loading";
+    result.textContent = "در حال ارسال درخواست به AvalAI…";
+    try {
+      const formData = new FormData(form);
+      const response = await fetch("/admin/test/llm", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (data.ok) {
+        result.className = "llm-test-result success";
+        result.innerHTML = "<strong>✓ موفق</strong><br>"
+          + "مدل: <code>" + (data.model || "—") + "</code><br>"
+          + "آدرس: <code>" + (data.base_url || "—") + "</code><br>"
+          + "پرامپت: " + (data.prompt || "—") + "<br>"
+          + "پاسخ: " + (data.response || "—");
+      } else {
+        result.className = "llm-test-result error";
+        result.innerHTML = "<strong>✗ ناموفق</strong><br>"
+          + "مدل: <code>" + (data.model || "—") + "</code><br>"
+          + "آدرس: <code>" + (data.base_url || "—") + "</code><br>"
+          + "پیام: " + (data.message || "—");
+      }
+    } catch (err) {
+      result.className = "llm-test-result error";
+      result.textContent = "خطا در ارتباط: " + err.message;
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
+});
+</script>
+{% endblock %}

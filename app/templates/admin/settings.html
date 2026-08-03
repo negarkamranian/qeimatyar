@@ -56,26 +56,7 @@
       </select>
     </div>
     <div class="row-divider"></div>
-    <h3 style="margin:0 0 8px;font-size:11px;color:#5b6b7f;">هوش مصنوعی ولیدیتیشن</h3>
-    <div class="row">
-      <label for="avalai_api_key">AVALAI_API_KEY</label>
-      <input id="avalai_api_key" name="avalai_api_key" type="password" value="" autocomplete="off" placeholder="کلید API AvalAI">
-    </div>
-    <div class="row">
-      <label for="avalai_base_url">AVALAI_BASE_URL</label>
-      <input id="avalai_base_url" name="avalai_base_url" type="url" value="{{ settings.avalai_base_url }}">
-    </div>
-    <div class="row">
-      <label for="avalai_model">AVALAI_MODEL</label>
-      <input id="avalai_model" name="avalai_model" type="text" value="{{ settings.avalai_model }}">
-    </div>
-    <div class="row">
-      <label for="llm_similarity_enabled">LLM_SIMILARITY_ENABLED</label>
-      <select id="llm_similarity_enabled" name="llm_similarity_enabled">
-        <option value="true" {% if settings.llm_similarity_enabled %}selected{% endif %}>true</option>
-        <option value="false" {% if not settings.llm_similarity_enabled %}selected{% endif %}>false</option>
-      </select>
-    </div>
+    <h3 style="margin:0 0 8px;font-size:11px;color:#5b6b7f;">تنظیمات LLM در صفحه <a href="/admin/llm">سرویس LLM</a> قابل تنظیم است.</h3>
     <button type="submit">ذخیره تنظیمات دیپلوی</button>
   </form>
 </div>
@@ -104,62 +85,4 @@
   <p class="subtle">فایل‌های محیطی هدف: {{ env_file_paths|join(", ") }}</p>
   {% endif %}
 </div>
-{% endblock %}
-
-{% block extra_data %}
-<style>
-.llm-test-result { margin-top: 12px; padding: 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; word-break: break-word; }
-.llm-test-result.loading { background: #eff6ff; color: #1e40af; }
-.llm-test-result.success { background: #dcfce8; color: #166534; }
-.llm-test-result.error { background: #fee2e2; color: #991b1b; }
-</style>
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-  const form = document.getElementById("llm-test-form");
-  const button = document.getElementById("llm-test-button");
-  const result = document.getElementById("llm-test-result");
-
-  if (!form) return;
-
-  form.addEventListener("submit", async function(e) {
-    e.preventDefault();
-    if (!button || !result) return;
-    const originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = "در حال تست…";
-    result.hidden = false;
-    result.className = "llm-test-result loading";
-    result.textContent = "در حال ارسال درخواست به AvalAI…";
-
-    try {
-      const formData = new FormData(form);
-      const response = await fetch("/admin/test/llm", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-      if (data.ok) {
-        result.className = "llm-test-result success";
-        result.innerHTML = "<strong>✓ موفق</strong><br>"
-          + "مدل: <code>" + (data.model || "—") + "</code><br>"
-          + "آدرس: <code>" + (data.base_url || "—") + "</code><br>"
-          + "پرامپت: " + (data.prompt || "—") + "<br>"
-          + "پاسخ: " + (data.response || "—");
-      } else {
-        result.className = "llm-test-result error";
-        result.innerHTML = "<strong>✗ ناموفق</strong><br>"
-          + "مدل: <code>" + (data.model || "—") + "</code><br>"
-          + "آدرس: <code>" + (data.base_url || "—") + "</code><br>"
-          + "پیام: " + (data.message || "—");
-      }
-    } catch (err) {
-      result.className = "llm-test-result error";
-      result.textContent = "خطا در ارتباط: " + err.message;
-    } finally {
-      button.disabled = false;
-      button.textContent = originalText;
-    }
-  });
-});
-</script>
 {% endblock %}

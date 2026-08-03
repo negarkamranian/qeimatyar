@@ -35,9 +35,9 @@
       <div class="store-controls">
         <input id="product-limit" type="number" min="10" max="100" value="50" style="width:80px;padding:8px;border-radius:8px;border:1px solid #dbe4ee;">
         <button id="analyze-store" class="sync-button">تحلیل بازار</button>
-        <label style="font-size:12px;color:#6b7280;">
-          <input id="use-llm" type="checkbox" disabled> LLM شباهت
-        </label>
+          <label style="font-size:12px;color:#6b7280;">
+            <input id="use-llm" type="checkbox" {% if settings.llm_similarity_enabled and settings.avalai_api_key %}checked{% endif %}> LLM شباهت
+          </label>
       </div>
     </section>
 
