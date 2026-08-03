@@ -422,14 +422,14 @@ def analyze_listings(
         display_listings = sorted(
             retained,
             key=lambda item: -(llm_scores.get(item.url, 0)),
-        )[:18]
+        )
         listing_dicts = []
         for item in display_listings:
             d = item.public_dict()
             d["llm_similarity"] = round(llm_scores.get(item.url, 0), 2)
             listing_dicts.append(d)
     else:
-        listing_dicts = [item.public_dict() for item in retained[:18]]
+        listing_dicts = [item.public_dict() for item in retained]
 
     return {
         "range": {"low": quick, "high": patient},

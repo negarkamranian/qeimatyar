@@ -159,9 +159,33 @@ function renderResult(data) {
   const analysis = data.analysis;
   currentAnalysis = data;
   document.querySelector("#result-title").textContent = data.query;
+
+  const queryDisplay = document.querySelector("#search-query-display");
+  if (data.resolved_from_url && data.query) {
+    queryDisplay.textContent = `جست‌وجو: ${data.query}`;
+    queryDisplay.hidden = false;
+  } else {
+    queryDisplay.hidden = true;
+  }
+
   document.querySelector("#recommended-price").textContent = toman(analysis.recommended);
 
   const sourceProduct = data.source_product;
+  const setPriceBtn = document.querySelector("#set-price-basalam");
+  if (sourceProduct && sourceProduct.product_id) {
+    setPriceBtn.hidden = false;
+    setPriceBtn.onclick = () => {
+      recordButtonClick("set_price_basalam", sourceProduct.product_id);
+      window.open(
+        `https://basalam.com/vendor/products/${sourceProduct.product_id}`,
+        "_blank",
+        "noopener",
+      );
+    };
+  } else {
+    setPriceBtn.hidden = true;
+  }
+
   const updateBtn = document.querySelector("#update-basalam-price");
   if (sourceProduct && sourceProduct.title) {
     updateBtn.hidden = false;
