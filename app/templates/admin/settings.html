@@ -86,7 +86,7 @@
 </div>
 <div class="card">
   <h2>فایل تنظیمات</h2>
-  <p class="subtle">تنظیمات در فایل <strong>{{ admin_settings_file }}</strong> و فایل .env مربوطه ذخیره می‌شوند.</p>
+  <p class="subtle">تنظیمات در فایل <strong>{{ admin_settings_file }}</strong> و فایل .env مربوطه ذخیره می‌شوند. پس از ذخیره، مقادیر بلافاصله در حافظه بروز می‌شوند؛ نیازی به ریستارت سرور نیست.</p>
   {% if env_file_paths %}
   <p class="subtle">فایل‌های محیطی هدف: {{ env_file_paths|join(", ") }}</p>
   {% endif %}

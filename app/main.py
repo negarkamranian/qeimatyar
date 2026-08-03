@@ -24,7 +24,7 @@ from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token, fet
 from app.config import refresh_settings, save_admin_overrides, settings
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
-from app.llm import score_product_similarity
+from app.llm import score_product_similarity, optimize_search_query
 from app.marketplaces import (
     analyze_listings,
     exclude_marketplace_product,
@@ -85,6 +85,9 @@ def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
         "user_count": len(users),
         "active_users": sum(1 for user in users if user["is_active"]),
         "synced_users": sum(1 for user in users if user["products_synced"]),
+        "recent_searches": _recent_searches_count(),
+        "net_feedback": _net_feedback(),
+        "total_store_views": _total_store_views(),
     }
 
 
@@ -95,6 +98,36 @@ def _is_token_expired(expires_at: str | None) -> bool:
         return datetime.fromisoformat(expires_at) <= datetime.now(timezone.utc)
     except ValueError:
         return True
+
+
+def _recent_searches_count() -> int:
+    try:
+        with connection() as db:
+            return db.execute(
+                """SELECT COUNT(*) FROM search_analytics
+                WHERE created_at > ?""",
+                (now_iso(),),
+            ).fetchone()[0]
+    except Exception:
+        return 0
+
+
+def _net_feedback() -> int:
+    try:
+        with connection() as db:
+            return db.execute(
+                "SELECT COALESCE(SUM(rating), 0) FROM user_feedback"
+            ).fetchone()[0]
+    except Exception:
+        return 0
+
+
+def _total_store_views() -> int:
+    try:
+        with connection() as db:
+            return db.execute("SELECT COUNT(*) FROM store_page_views").fetchone()[0]
+    except Exception:
+        return 0
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
@@ -451,25 +484,30 @@ async def store_analysis(
     async def analyze_product(item: dict[str, Any]) -> dict[str, Any] | None:
         async with semaphore:
             try:
-                crawl = await market_crawler.search(item["title"])
-                listings = crawl["listings"]
                 product_id = item.get("product_id")
                 source_product = None
-                if product_id or payload.use_llm:
-                    pid = product_id or _basalam_product_id_from_url(item.get("url", ""))
-                    if pid:
-                        source_product = await fetch_basalam_product(pid)
+                search_query = item["title"]
+                if product_id:
+                    source_product = await fetch_basalam_product(product_id)
+                    if source_product and source_product.get("title"):
+                        search_query = source_product["title"]
+                        if settings.llm_similarity_enabled and settings.avalai_api_key:
+                            optimized = await optimize_search_query(source_product)
+                            if optimized:
+                                search_query = optimized
+                crawl = await market_crawler.search(search_query)
+                listings = crawl["listings"]
                 llm_scores: dict[str, float] = {}
                 if payload.use_llm and settings.llm_similarity_enabled:
-                    llm_scores = await score_product_similarity(item["title"], listings, source_product)
+                    llm_scores = await score_product_similarity(search_query, listings, source_product)
                 analysis = analyze_listings(listings, llm_scores)
                 return {
-                    "product_id": item["product_id"],
-                    "title": item["title"] or source_product.get("title", ""),
+                    "product_id": item["product_id"] if product_id else 0,
+                    "title": source_product.get("title", "") if source_product else item["title"],
                     "url": item["url"],
-                    "image_url": source_product.get("image_url", "") if source_product else item.get("image_url", ""),
-                    "current_price": source_product.get("price", 0) if source_product else item.get("price", 0),
-                    "stock": item.get("stock", 0),
+                    "image_url": source_product.get("image_url", "") if source_product else "",
+                    "current_price": source_product.get("price", 0) if source_product else 0,
+                    "stock": 0,
                     "analysis": {
                         "recommended": analysis["recommended"],
                         "range": analysis["range"],
@@ -580,6 +618,14 @@ def admin_metrics_page(request: Request) -> HTMLResponse:
         ).fetchone()[0]
         total_clicks = db.execute("SELECT COUNT(*) FROM button_click_metrics").fetchone()[0]
         total_store_views = db.execute("SELECT COUNT(*) FROM store_page_views").fetchone()[0]
+        total_searches = db.execute("SELECT COUNT(*) FROM search_analytics").fetchone()[0]
+        recent_searches = [
+            dict(row)
+            for row in db.execute(
+                """SELECT query, resolved_from_url, result_count, used_llm, created_at, client_id
+                FROM search_analytics ORDER BY created_at DESC LIMIT 30"""
+            ).fetchall()
+        ]
         recent_feedback = [
             dict(row)
             for row in db.execute(
@@ -599,6 +645,8 @@ def admin_metrics_page(request: Request) -> HTMLResponse:
             "similarity_dislikes": similarity_dislikes,
             "total_clicks": total_clicks,
             "total_store_views": total_store_views,
+            "total_searches": total_searches,
+            "recent_searches": recent_searches,
             "recent_feedback": recent_feedback,
         },
     )
@@ -632,12 +680,18 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         if merchant_rows:
             merchant_product = merchant_rows[0]
     source_product: dict[str, Any] | None = None
+    search_query = query
     if payload.basalam_product_url and settings.llm_similarity_enabled:
         product_id = _basalam_product_id_from_url(payload.basalam_product_url)
         if product_id:
             source_product = await fetch_basalam_product(product_id)
+            if source_product and source_product.get("title"):
+                search_query = source_product["title"]
+                optimized = await optimize_search_query(source_product)
+                if optimized:
+                    search_query = optimized
     try:
-        crawl = await market_crawler.search(query)
+        crawl = await market_crawler.search(search_query)
     except Exception as exc:
         logger.exception("Marketplace crawler initialization failed")
         raise HTTPException(
@@ -657,7 +711,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
             )
         llm_scores: dict[str, float] = {}
         if settings.llm_similarity_enabled:
-            llm_scores = await score_product_similarity(query, listings, source_product)
+            llm_scores = await score_product_similarity(search_query, listings, source_product)
         analysis = analyze_listings(listings, llm_scores)
     except ValueError as exc:
         raise HTTPException(
@@ -668,6 +722,23 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
                 "raw_count": crawl["raw_count"],
             },
         ) from exc
+    with connection() as db:
+        db.execute(
+            """INSERT INTO search_analytics
+            (client_id, user_id, query, resolved_from_url, source_product_id,
+            result_count, used_llm, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                client_id,
+                merchant_user_id,
+                query,
+                resolved_from_url,
+                str(source_product.get("product_id")) if source_product else None,
+                analysis["sample_size"],
+                settings.llm_similarity_enabled,
+                now_iso(),
+            ),
+        )
     return {
         "query": query,
         "resolved_from_url": resolved_from_url,

@@ -153,6 +153,21 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_store_page_views_store
               ON store_page_views(store_id, created_at);
+            CREATE TABLE IF NOT EXISTS search_analytics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT,
+                user_id INTEGER,
+                query TEXT NOT NULL,
+                resolved_from_url INTEGER NOT NULL DEFAULT 0,
+                source_product_id TEXT,
+                result_count INTEGER NOT NULL,
+                used_llm INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_search_analytics_created
+              ON search_analytics(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_search_analytics_query
+              ON search_analytics(query);
             """
         )
         account_columns = {

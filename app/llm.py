@@ -12,6 +12,58 @@ from app.marketplaces import MarketListing
 logger = logging.getLogger(__name__)
 
 
+async def optimize_search_query(source_product: dict[str, Any]) -> str:
+    """Use LLM to build the best search query from product details.
+
+    Extracts brand, model, key specs, and important keywords to form
+    the most precise search string for marketplace crawling.
+    """
+    context = _build_source_context(source_product)
+    prompt = f'''You are an e-commerce search query expert.
+
+Given the following product details, produce the single best search query string for finding this exact product on Persian marketplaces (Torob, Digikala, Basalam).
+
+Rules:
+- Include brand, model, key specs (capacity, color, size, weight, etc.)
+- Do NOT include prices, vendor names, or non-essential details
+- Keep it concise (under 100 characters)
+- Output ONLY the query text, no formatting
+
+Product details:
+{context}
+'''
+
+    try:
+        async with httpx.AsyncClient(
+            base_url=settings.avalai_base_url,
+            timeout=httpx.Timeout(30, connect=10),
+            headers={
+                "Authorization": f"Bearer {settings.avalai_api_key}",
+                "Content-Type": "application/json",
+            },
+        ) as client:
+            response = await client.post(
+                "/chat/completions",
+                json={
+                    "model": settings.avalai_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 200,
+                    "temperature": 0.1,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        logger.warning("LLM query optimization failed: %s", exc)
+        return ""
+
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+    if content and len(content) <= 200:
+        logger.info("LLM query optimized: %s -> %s", source_product.get("title", "")[:50], content)
+        return content
+    return ""
+
+
 def _build_source_context(source_product: dict[str, Any]) -> str:
     """Build a human-readable description of the source product for the LLM prompt."""
     parts: list[str] = []

@@ -7,7 +7,6 @@
   "APP_LOG_LEVEL": "INFO",
   "APP_BASE_URL": "http://localhost:8000",
   "DEMO_MODE": "true",
-  "AVALAI_API_KEY": "",
   "AVALAI_BASE_URL": "https://api.avalai.ir/v1",
   "AVALAI_MODEL": "gpt-5.6-luna",
   "LLM_SIMILARITY_ENABLED": "false"

@@ -32,6 +32,35 @@
     <div class="hint">بازدید صفحات غرفه</div>
     <strong>{{ total_store_views }}</strong>
   </div>
+  <div class="summary-card">
+    <div class="hint">کل جست‌وجوها</div>
+    <strong>{{ total_searches }}</strong>
+  </div>
+</div>
+<div class="card">
+  <h2>آخرین جست‌وجوها</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>زمان</th>
+        <th>جست‌وجو</th>
+        <th>نتایج</th>
+        <th>LLM</th>
+        <th>آی‌دی بازدیدکننده</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in recent_searches %}
+      <tr>
+        <td>{{ s.created_at }}</td>
+        <td>{{ s.query[:60] }}</td>
+        <td>{{ s.result_count }} عدد</td>
+        <td>{{ "✓" if s.used_llm else "—" }}</td>
+        <td>{{ s.client_id[:12] if s.client_id else "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 <div class="card">
   <h2>آخرین بازخوردها</h2>

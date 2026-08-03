@@ -212,6 +212,7 @@ function renderResult(data) {
   document.querySelector("#toggle-listings").textContent = "نمایش همه";
 
   setupFeedbackButtons();
+  setupUseRecommendedButton();
   setupUpdateBasalamButton();
 }
 
@@ -228,11 +229,26 @@ function setupUpdateBasalamButton() {
   const sourceProduct = currentAnalysis?.source_product;
   if (sourceProduct && sourceProduct.product_id) {
     btn.hidden = false;
+    btn.innerHTML = '<span>💰</span>استفاده از این قیمت در غرفه';
     btn.onclick = () => {
-      recordButtonClick("update_price_basalam", sourceProduct.product_id);
+      recordButtonClick("use_price_in_store", sourceProduct.product_id);
       window.open(`https://basalam.com/vendor/products/${sourceProduct.product_id}`, "_blank", "noopener");
     };
   }
+}
+
+function setupUseRecommendedButton() {
+  const btn = document.querySelector("#use-recommended");
+  if (!btn) return;
+  btn.onclick = () => {
+    const slider = document.querySelector("#price-slider");
+    slider.value = Number(currentAnalysis?.analysis?.recommended || 0);
+    document.querySelector("#selected-price-label").textContent = merchantContext.active
+      ? "قیمت انتخابی شما"
+      : "قیمت انتخابی شما";
+    updateSelectedPrice();
+    recordButtonClick("use_recommended_price");
+  };
 }
 
 async function sendFeedback(feedbackType, rating) {
@@ -398,12 +414,6 @@ document.querySelectorAll("[data-example]").forEach(button => {
 });
 
 document.querySelector("#price-slider").addEventListener("input", updateSelectedPrice);
-document.querySelector("#use-recommended").addEventListener("click", () => {
-  const slider = document.querySelector("#price-slider");
-  slider.value = Number(currentAnalysis.recommended);
-  document.querySelector("#selected-price-label").textContent = "قیمت انتخابی شما";
-  updateSelectedPrice();
-});
 document.querySelector("#new-search").addEventListener("click", () => {
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.delete("q");
