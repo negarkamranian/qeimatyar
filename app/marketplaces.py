@@ -388,9 +388,11 @@ def analyze_listings(
         q1 = _percentile(prices, 0.25)
         q3 = _percentile(prices, 0.75)
         iqr = q3 - q1
-        iqr_multiplier = 2 if has_llm else 1.5
-        low_fence, high_fence = q1 - iqr_multiplier * iqr, q3 + iqr_multiplier * iqr
-        retained = [item for item in positive if low_fence <= item.price <= high_fence]
+        if has_llm:
+            retained = list(positive)
+        else:
+            low_fence, high_fence = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+            retained = [item for item in positive if low_fence <= item.price <= high_fence]
     else:
         retained = positive
     if len(retained) < 3:
@@ -443,7 +445,7 @@ def analyze_listings(
         "excluded_count": len(positive) - len(retained),
         "source_counts": counts,
         "listings": listing_dicts,
-        "method": "IQR(2x) + LLM" if has_llm else "IQR + P25/P50/P75",
+        "method": "LLM ranking" if has_llm else "IQR + P25/P50/P75",
         "elasticity": elasticity,
         "llm_similarity_enabled": has_llm,
     }

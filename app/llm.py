@@ -44,17 +44,23 @@ async def _call_llm(prompt: str, max_tokens: int = 8000) -> str | None:
         )
         if response.status_code == 200:
             data = response.json()
-            content = data.get("output_text") or data.get("output", "")
-            if not content and isinstance(data.get("output"), list):
-                content = "".join(
-                    (
-                        item.get("content", [{}])[0].get("text", "")
-                        if isinstance(item, dict)
-                        else ""
-                    )
-                    for item in data["output"]
-                )
-            return content if content else None
+            output_text = data.get("output_text")
+            if output_text:
+                return str(output_text)
+            output = data.get("output")
+            if isinstance(output, list):
+                for item in output:
+                    if not isinstance(item, dict):
+                        continue
+                    content_items = item.get("content")
+                    if isinstance(content_items, list):
+                        for ci in content_items:
+                            if isinstance(ci, dict) and ci.get("type") == "output_text":
+                                text_val = ci.get("text", "")
+                                if text_val:
+                                    return str(text_val)
+            logger.warning("LLM /responses returned 200 but no text content found")
+            return None
         logger.warning(
             "LLM /responses returned %d: %s",
             response.status_code,
