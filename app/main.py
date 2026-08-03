@@ -216,6 +216,97 @@ def admin_notifications_page(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/admin/connectivity", response_class=HTMLResponse)
+def admin_connectivity_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/connectivity.html",
+        context=_admin_context(request, "connectivity"),
+    )
+
+
+@app.get("/admin/api/status")
+def admin_api_status(request: Request) -> dict[str, Any]:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    return {
+        "basalam_key_configured": bool(settings.client_id),
+        "basalam_secret_configured": bool(settings.client_secret),
+        "avalai_key_configured": bool(settings.avalai_api_key),
+        "avalai_base_url": settings.avalai_base_url,
+        "avalai_model": settings.avalai_model,
+        "llm_similarity_enabled": settings.llm_similarity_enabled,
+        "marketplace_trust_env": settings.marketplace_trust_env,
+        "demo_mode": settings.demo_mode,
+        "app_env": settings.app_env,
+    }
+
+
+@app.post("/admin/test/basalam")
+async def test_basalam_connection(request: Request) -> dict[str, Any]:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                "https://openapi.basalam.com/v1/products/search",
+                params={"q": "آیفون", "rows": 1},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                count = 0
+                if isinstance(data, list):
+                    count = len(data)
+                elif isinstance(data, dict):
+                    count = len(data.get("data") or data.get("results") or [])
+                return {"ok": True, "status": response.status_code, "result_count": count, "message": "اتصال موفق"}
+            return {"ok": False, "status": response.status_code, "message": f"خطا: {response.status_code}"}
+    except Exception as exc:
+        return {"ok": False, "status": 0, "message": str(exc)[:200]}
+
+
+@app.post("/admin/test/marketplace")
+async def test_marketplace_connection(request: Request) -> dict[str, Any]:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    try:
+        crawl = await market_crawler.search("آیفون")
+        results = {}
+        for status in crawl["sources"]:
+            results[status.source] = {"ok": status.ok, "count": status.count, "message": status.message}
+        return {"ok": True, "results": results, "raw_count": crawl["raw_count"]}
+    except Exception as exc:
+        logger.exception("Marketplace connectivity test failed")
+        return {"ok": False, "message": str(exc)[:200]}
+
+
+@app.post("/admin/test/llm")
+async def test_llm_connection(request: Request) -> dict[str, Any]:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    if not settings.avalai_api_key:
+        return {"ok": False, "message": "کلید API AvalAI تنظیم نشده است.", "llm_configured": False}
+    from app.llm import _call_llm
+
+    content = await _call_llm("سلام، امروز چه خبر؟", max_tokens=20)
+    if content:
+        return {
+            "ok": True,
+            "model": settings.avalai_model,
+            "base_url": settings.avalai_base_url,
+            "response": content[:100],
+            "message": "اتصال موفق (از /responses یا /chat/completions استفاده شد)",
+        }
+    return {
+        "ok": False,
+        "model": settings.avalai_model,
+        "base_url": settings.avalai_base_url,
+        "message": "اتصال ناموفق — لاگ سرور را بررسی کنید (کلید API یا نام مدل ممکن است اشتباه باشد)",
+    }
+
+
 @app.get("/admin/usdt", response_class=HTMLResponse)
 def admin_usdt_page(request: Request) -> HTMLResponse:
     if not _admin_session(request):

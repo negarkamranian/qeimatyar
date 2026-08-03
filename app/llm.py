@@ -12,6 +12,91 @@ from app.marketplaces import MarketListing
 logger = logging.getLogger(__name__)
 
 
+async def _call_llm(prompt: str, max_tokens: int = 8000) -> str | None:
+    """Make an LLM API call, trying multiple endpoint formats.
+
+    Tries /v1/chat/completions (OpenAI format) first,
+    then falls back to /v1/responses (AvalAI native format).
+    Returns the response text or None on failure.
+    """
+    if not settings.avalai_api_key:
+        return None
+
+    headers = {
+        "Authorization": f"Bearer {settings.avalai_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    client = httpx.AsyncClient(
+        base_url=settings.avalai_base_url,
+        timeout=httpx.Timeout(60, connect=15),
+        headers=headers,
+    )
+
+    try:
+        try:
+            response = await client.post(
+                "/chat/completions",
+                json={
+                    "model": settings.avalai_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "temperature": 0.1,
+                },
+            )
+            if response.status_code == 200:
+                data = response.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if content:
+                    return content
+            elif response.status_code == 400:
+                error_body = response.text[:500]
+                logger.warning("LLM /chat/completions returned 400: %s", error_body)
+                raise _LLMFormatError(error_body)
+        except _LLMFormatError:
+            pass
+
+        response = await client.post(
+            "/responses",
+            json={
+                "model": settings.avalai_model,
+                "input": prompt,
+                "max_tokens": max_tokens,
+                "temperature": 0.1,
+            },
+        )
+        if response.status_code == 200:
+            data = response.json()
+            content = data.get("output") or data.get("output_text", "")
+            if not content and isinstance(data.get("output"), (list, dict)):
+                if isinstance(data.get("output"), list):
+                    content = "".join(
+                        item.get("content", [{}])[0].get("text", "")
+                        if isinstance(item, dict)
+                        else ""
+                        for item in data["output"]
+                    )
+                else:
+                    content = str(data.get("output", ""))
+            return content
+        else:
+            logger.warning(
+                "LLM /responses returned %d: %s",
+                response.status_code,
+                response.text[:500],
+            )
+            return None
+    except httpx.HTTPError as exc:
+        logger.warning("LLM API call failed: %s", exc)
+        return None
+    finally:
+        await client.aclose()
+
+
+class _LLMFormatError(Exception):
+    pass
+
+
 async def optimize_search_query(source_product: dict[str, Any]) -> str:
     """Use LLM to build the best search query from product details.
 
@@ -33,34 +118,11 @@ Product details:
 {context}
 '''
 
-    try:
-        async with httpx.AsyncClient(
-            base_url=settings.avalai_base_url,
-            timeout=httpx.Timeout(30, connect=10),
-            headers={
-                "Authorization": f"Bearer {settings.avalai_api_key}",
-                "Content-Type": "application/json",
-            },
-        ) as client:
-            response = await client.post(
-                "/chat/completions",
-                json={
-                    "model": settings.avalai_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 200,
-                    "temperature": 0.1,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-    except Exception as exc:
-        logger.warning("LLM query optimization failed: %s", exc)
-        return ""
-
-    content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-    if content and len(content) <= 200:
-        logger.info("LLM query optimized: %s -> %s", source_product.get("title", "")[:50], content)
-        return content
+    result = await _call_llm(prompt, max_tokens=200)
+    if result and len(result.strip()) <= 200:
+        optimized = result.strip()
+        logger.info("LLM query optimized: %s -> %s", source_product.get("title", "")[:50], optimized)
+        return optimized
     return ""
 
 
@@ -109,30 +171,14 @@ async def score_product_similarity(
         prompt = _build_query_comparison_prompt(query, products_text)
 
     try:
-        async with httpx.AsyncClient(
-            base_url=settings.avalai_base_url,
-            timeout=httpx.Timeout(60, connect=15),
-            headers={
-                "Authorization": f"Bearer {settings.avalai_api_key}",
-                "Content-Type": "application/json",
-            },
-        ) as client:
-            response = await client.post(
-                "/chat/completions",
-                json={
-                    "model": settings.avalai_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": max(8000, len(listings) * 8),
-                    "temperature": 0.1,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
+        content = await _call_llm(prompt, max_tokens=max(8000, len(listings) * 8))
     except Exception as exc:
         logger.warning("LLM similarity scoring failed: %s", exc)
         return {}
 
-    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    if not content:
+        logger.warning("LLM similarity scoring returned no content")
+        return {}
 
     try:
         scores = json.loads(content)
