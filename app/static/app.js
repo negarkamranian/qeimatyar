@@ -127,9 +127,24 @@ async function analyze(productName) {
 
 function renderResult(data) {
   const analysis = data.analysis;
-  currentAnalysis = analysis;
+  currentAnalysis = data;
   document.querySelector("#result-title").textContent = data.query;
   document.querySelector("#recommended-price").textContent = toman(analysis.recommended);
+
+  const sourceProduct = data.source_product;
+  const updateBtn = document.querySelector("#update-basalam-price");
+  if (sourceProduct && sourceProduct.title) {
+    updateBtn.hidden = false;
+    updateBtn.onclick = () => {
+      recordButtonClick("update_price_basalam", sourceProduct.product_id);
+      const url = sourceProduct.product_id
+        ? `https://basalam.com/vendor/products/${sourceProduct.product_id}`
+        : "https://basalam.com/vendor/products";
+      window.open(url, "_blank", "noopener");
+    };
+  } else {
+    updateBtn.hidden = true;
+  }
   const scale = analysis.scale || analysis.range;
   document.querySelector("#low-label").textContent = toman(analysis.positions.quick);
   document.querySelector("#high-label").textContent = toman(analysis.positions.patient);
@@ -170,7 +185,7 @@ function renderResult(data) {
 
   const listings = document.querySelector("#listings");
   listings.classList.remove("expanded");
-  listings.innerHTML = analysis.listings.map(item => {
+  listings.innerHTML = analysis.listings.map((item, index) => {
     const href = safeUrl(item.url);
     const image = safeUrl(item.image_url);
     const imageNode = image
@@ -179,7 +194,8 @@ function renderResult(data) {
     const similarityPct = Math.round(Number(item.llm_similarity ?? item.similarity) * 100);
     const simClass = similarityPct >= 80 ? "high" : similarityPct >= 50 ? "mid" : "low";
     const simLabel = item.llm_similarity != null ? "امتیاز LLM" : "٪ شباهت";
-    return `<a class="listing-card" href="${href}" target="_blank" rel="noopener noreferrer">
+    const listingKey = encodeURIComponent(href);
+    return `<a class="listing-card" href="${href}" target="_blank" rel="noopener noreferrer" data-listing="${listingKey}">
       ${imageNode}
       <span class="listing-info">
         <strong title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
@@ -187,9 +203,93 @@ function renderResult(data) {
         <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ ${simLabel}</small>
         <small>${escapeHtml(sourceNames[item.source] || item.source)}</small>
       </span>
+      <div class="listing-feedback" onclick="handleListingFeedback(event, ${index}, ${similarityPct})">
+        <button class="listing-feedback-button dislike" data-action="dislike" title="محصول مشابه نیست">👎</button>
+        <button class="listing-feedback-button like" data-action="like" title="محصول مشابه است">👍</button>
+      </div>
     </a>`;
   }).join("");
   document.querySelector("#toggle-listings").textContent = "نمایش همه";
+
+  setupFeedbackButtons();
+  setupUpdateBasalamButton();
+}
+
+function setupFeedbackButtons() {
+  const likeBtn = document.querySelector("#like-recommendation");
+  const dislikeBtn = document.querySelector("#dislike-recommendation");
+  if (likeBtn) likeBtn.onclick = () => sendFeedback("recommendation", 1);
+  if (dislikeBtn) dislikeBtn.onclick = () => sendFeedback("recommendation", -1);
+}
+
+function setupUpdateBasalamButton() {
+  const btn = document.querySelector("#update-basalam-price");
+  if (!btn) return;
+  const sourceProduct = currentAnalysis?.source_product;
+  if (sourceProduct && sourceProduct.product_id) {
+    btn.hidden = false;
+    btn.onclick = () => {
+      recordButtonClick("update_price_basalam", sourceProduct.product_id);
+      window.open(`https://basalam.com/vendor/products/${sourceProduct.product_id}`, "_blank", "noopener");
+    };
+  }
+}
+
+async function sendFeedback(feedbackType, rating) {
+  try {
+    await fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        feedback_type: feedbackType,
+        target_url: window.location.href,
+        rating: rating,
+        product_name: currentAnalysis?.query || document.querySelector("#result-title")?.textContent || "",
+      }),
+    });
+  } catch {
+    // feedback tracking is best-effort
+  }
+}
+
+async function recordButtonClick(buttonName, productId = null) {
+  try {
+    await fetch("/api/metrics/button-click", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        button_name: buttonName,
+        product_id: productId,
+      }),
+    });
+  } catch {
+    // click tracking is best-effort
+  }
+}
+
+function handleListingFeedback(event, index, similarityPct) {
+  event.preventDefault();
+  event.stopPropagation();
+  const action = event.target.dataset.action;
+  if (!action) return;
+  const rating = action === "like" ? 1 : -1;
+  const listing = currentAnalysis?.analysis?.listings[index];
+  if (!listing) return;
+  fetch("/api/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      feedback_type: "similarity",
+      target_url: listing.url,
+      rating: rating,
+      product_name: currentAnalysis?.query || "",
+    }),
+  }).catch(() => {});
+
+  // visual feedback
+  const card = event.target.closest(".listing-card");
+  card.style.opacity = "0.5";
+  setTimeout(() => { card.style.opacity = ""; }, 1500);
 }
 
 function computeElasticity(value, recommended, low, high) {

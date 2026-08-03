@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
+from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token, fetch_basalam_product, fetch_basalam_store, _basalam_product_id_from_url, _basalam_store_id_from_url
 from app.config import refresh_settings, save_admin_overrides, settings
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
@@ -287,6 +287,7 @@ class PolicyInput(BaseModel):
 class MarketSearchInput(BaseModel):
     product_name: str = Field(min_length=2, max_length=1000)
     exclude_basalam_product_id: int | None = Field(default=None, gt=0)
+    basalam_product_url: str | None = Field(default=None, max_length=500)
 
 
 class RangeOverrideInput(BaseModel):
@@ -407,6 +408,202 @@ def health() -> dict[str, str]:
     return {"status": "ok", "mode": "demo" if settings.demo_mode else "live"}
 
 
+@app.get("/store/{store_id}")
+def store_page(request: Request, store_id: str) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="store.html",
+        context={"store_id": store_id},
+    )
+
+
+class StoreAnalysisInput(BaseModel):
+    store_id: str = Field(min_length=1, max_length=200)
+    product_limit: int = Field(default=50, ge=1, le=100)
+    use_llm: bool = Field(default=False)
+
+
+@app.post("/api/store/analyze")
+async def store_analysis(
+    payload: StoreAnalysisInput, request: Request
+) -> dict[str, Any]:
+    client_id = request.client.host if request.client else "unknown"
+    store_id = _basalam_store_id_from_url(payload.store_id) or payload.store_id
+    try:
+        store_info = await fetch_basalam_store(store_id)
+    except Exception as exc:
+        logger.warning("Store fetch failed for %s: %s", store_id, exc)
+        store_info = {"vendor_id": None, "title": store_id, "store_identifier": store_id}
+
+    with connection() as db:
+        db.execute(
+            """INSERT INTO store_page_views (store_id, client_id, created_at)
+            VALUES (?, ?, ?)""",
+            (store_id, client_id, now_iso()),
+        )
+
+    products = await fetch_store_product_list(store_id, max_products=payload.product_limit)
+    if not products:
+        return {"store": store_info, "results": [], "error": "هیچ محصولی یافت نشد."}
+
+    semaphore = asyncio.Semaphore(3)
+
+    async def analyze_product(item: dict[str, Any]) -> dict[str, Any] | None:
+        async with semaphore:
+            try:
+                crawl = await market_crawler.search(item["title"])
+                listings = crawl["listings"]
+                product_id = item.get("product_id")
+                source_product = None
+                if product_id or payload.use_llm:
+                    pid = product_id or _basalam_product_id_from_url(item.get("url", ""))
+                    if pid:
+                        source_product = await fetch_basalam_product(pid)
+                llm_scores: dict[str, float] = {}
+                if payload.use_llm and settings.llm_similarity_enabled:
+                    llm_scores = await score_product_similarity(item["title"], listings, source_product)
+                analysis = analyze_listings(listings, llm_scores)
+                return {
+                    "product_id": item["product_id"],
+                    "title": item["title"] or source_product.get("title", ""),
+                    "url": item["url"],
+                    "image_url": source_product.get("image_url", "") if source_product else item.get("image_url", ""),
+                    "current_price": source_product.get("price", 0) if source_product else item.get("price", 0),
+                    "stock": item.get("stock", 0),
+                    "analysis": {
+                        "recommended": analysis["recommended"],
+                        "range": analysis["range"],
+                        "confidence": analysis["confidence"],
+                        "sample_size": analysis["sample_size"],
+                        "source_counts": analysis["source_counts"],
+                        "listings": analysis["listings"],
+                        "llm_similarity_enabled": analysis.get("llm_similarity_enabled", False),
+                        "method": analysis["method"],
+                    },
+                }
+            except Exception as exc:
+                logger.info("Store product analysis failed for %s: %s", item.get("product_id"), exc)
+                return None
+
+    results = await asyncio.gather(
+        *(analyze_product(item) for item in products)
+    )
+    valid_results = [r for r in results if r is not None]
+    return {"store": store_info, "results": valid_results, "total": len(products)}
+
+
+class FeedbackInput(BaseModel):
+    feedback_type: str = Field(pattern="^(similarity|recommendation)$")
+    target_url: str = Field(min_length=1, max_length=2000)
+    rating: int = Field(ge=-1, le=1)
+    product_name: str | None = None
+    store_id: str | None = None
+
+
+@app.post("/api/feedback")
+def submit_feedback(
+    payload: FeedbackInput, request: Request
+) -> dict[str, bool]:
+    client_id = request.client.host if request.client else "unknown"
+    user_id = read_session(request.cookies.get(COOKIE_NAME))
+    with connection() as db:
+        db.execute(
+            """INSERT INTO user_feedback
+            (client_id, user_id, feedback_type, target_url, rating, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                client_id,
+                user_id,
+                payload.feedback_type,
+                payload.target_url,
+                payload.rating,
+                json.dumps(
+                    {
+                        "product_name": payload.product_name,
+                        "store_id": payload.store_id,
+                    },
+                    ensure_ascii=False,
+                ),
+                now_iso(),
+            ),
+        )
+    return {"ok": True}
+
+
+class ButtonClickInput(BaseModel):
+    button_name: str = Field(min_length=1, max_length=100)
+    product_id: int | None = None
+    store_id: str | None = None
+    product_url: str | None = None
+
+
+@app.post("/api/metrics/button-click")
+def record_button_click(
+    payload: ButtonClickInput, request: Request
+) -> dict[str, bool]:
+    client_id = request.client.host if request.client else "unknown"
+    user_id = read_session(request.cookies.get(COOKIE_NAME))
+    with connection() as db:
+        db.execute(
+            """INSERT INTO button_click_metrics
+            (button_name, product_id, store_id, client_id, user_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                payload.button_name,
+                str(payload.product_id) if payload.product_id else None,
+                payload.store_id,
+                client_id,
+                user_id,
+                now_iso(),
+            ),
+        )
+    return {"ok": True}
+
+
+@app.get("/admin/metrics", response_class=HTMLResponse)
+def admin_metrics_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    with connection() as db:
+        total_feedback = db.execute("SELECT COUNT(*) FROM user_feedback").fetchone()[0]
+        recommendation_likes = db.execute(
+            "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='recommendation' AND rating=1"
+        ).fetchone()[0]
+        recommendation_dislikes = db.execute(
+            "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='recommendation' AND rating=-1"
+        ).fetchone()[0]
+        similarity_likes = db.execute(
+            "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='similarity' AND rating=1"
+        ).fetchone()[0]
+        similarity_dislikes = db.execute(
+            "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='similarity' AND rating=-1"
+        ).fetchone()[0]
+        total_clicks = db.execute("SELECT COUNT(*) FROM button_click_metrics").fetchone()[0]
+        total_store_views = db.execute("SELECT COUNT(*) FROM store_page_views").fetchone()[0]
+        recent_feedback = [
+            dict(row)
+            for row in db.execute(
+                """SELECT feedback_type, rating, target_url, user_id, client_id, created_at
+                FROM user_feedback ORDER BY created_at DESC LIMIT 50"""
+            ).fetchall()
+        ]
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/metrics.html",
+        context={
+            **_admin_context(request, "metrics"),
+            "total_feedback": total_feedback,
+            "recommendation_likes": recommendation_likes,
+            "recommendation_dislikes": recommendation_dislikes,
+            "similarity_likes": similarity_likes,
+            "similarity_dislikes": similarity_dislikes,
+            "total_clicks": total_clicks,
+            "total_store_views": total_store_views,
+            "recent_feedback": recent_feedback,
+        },
+    )
+
+
 @app.post("/api/market/analyze")
 async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[str, Any]:
     client_id = request.client.host if request.client else "unknown"
@@ -434,6 +631,11 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         )
         if merchant_rows:
             merchant_product = merchant_rows[0]
+    source_product: dict[str, Any] | None = None
+    if payload.basalam_product_url and settings.llm_similarity_enabled:
+        product_id = _basalam_product_id_from_url(payload.basalam_product_url)
+        if product_id:
+            source_product = await fetch_basalam_product(product_id)
     try:
         crawl = await market_crawler.search(query)
     except Exception as exc:
@@ -455,7 +657,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
             )
         llm_scores: dict[str, float] = {}
         if settings.llm_similarity_enabled:
-            llm_scores = await score_product_similarity(query, listings)
+            llm_scores = await score_product_similarity(query, listings, source_product)
         analysis = analyze_listings(listings, llm_scores)
     except ValueError as exc:
         raise HTTPException(
@@ -470,6 +672,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         "query": query,
         "resolved_from_url": resolved_from_url,
         "merchant_product": merchant_product,
+        "source_product": source_product,
         "analysis": analysis,
         "sources": statuses,
         "raw_count": crawl["raw_count"],

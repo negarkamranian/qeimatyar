@@ -155,7 +155,18 @@
             <strong id="recommended-price">—</strong>
             <span>تومان</span>
           </div>
-          <button id="use-recommended">انتخاب قیمت پیشنهادی</button>
+          <button id="use-recommended">استفاده از این قیمت</button>
+          <div class="feedback-buttons">
+            <button id="dislike-recommendation" class="feedback-button dislike" title="قیمت پیشنهادی مناسب نیست">
+              <span>👎</span>
+            </button>
+            <button id="like-recommendation" class="feedback-button like" title="قیمت پیشنهادی مناسب است">
+              <span>👍</span>
+            </button>
+          </div>
+          <button id="update-basalam-price" class="update-price-button" hidden>
+            <span>💰</span>به‌روزرسانی قیمت در باسلام
+          </button>
         </div>
         <div id="price-risk" class="price-risk neutral" role="status" aria-live="polite">
           <strong id="risk-title">قیمت در محدوده‌ی پیشنهادی</strong>
@@ -208,6 +219,6 @@
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260802-2" defer></script>
+  <script src="/static/app.js?v=20260803-1" defer></script>
 </body>
 </html>

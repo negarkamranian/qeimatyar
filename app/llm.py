@@ -12,11 +12,30 @@ from app.marketplaces import MarketListing
 logger = logging.getLogger(__name__)
 
 
+def _build_source_context(source_product: dict[str, Any]) -> str:
+    """Build a human-readable description of the source product for the LLM prompt."""
+    parts: list[str] = []
+    parts.append(f"Title: {source_product.get('title', '')}")
+    if brand := source_product.get("brand"):
+        if brand := str(brand).strip():
+            parts.append(f"Brand: {brand}")
+    if desc := source_product.get("description"):
+        if desc := str(desc).strip():
+            parts.append(f"Description: {desc[:500]}")
+    specs: dict[str, str] = source_product.get("specs", {}) or {}
+    if specs:
+        specs_text = "; ".join(f"{k}: {v}" for k, v in specs.items() if v)
+        if specs_text:
+            parts.append(f"Specifications: {specs_text[:500]}")
+    return "\n".join(parts)
+
+
 async def score_product_similarity(
     query: str,
     listings: list[MarketListing],
+    source_product: dict[str, Any] | None = None,
 ) -> dict[str, float]:
-    """Score each listing's similarity to the query using an LLM.
+    """Score each listing's similarity to the search query or source product using an LLM.
 
     Returns a mapping of listing URL -> similarity score (0.0–1.0).
     Returns an empty dict if LLM similarity is disabled or the API fails.
@@ -27,51 +46,15 @@ async def score_product_similarity(
     if not listings:
         return {}
 
-    # Batch all listings into a single LLM request.
-    # Key by URL since external_id is only populated for some parsers.
     products_text = "\n".join(
         f"{i + 1}. {listing.title}" for i, listing in enumerate(listings)
     )
 
-    prompt = f'''You are an e-commerce product matching expert.
-
-A shopper is searching for: "{query}"
-
-For each product, assign a similarity score from 0-100 based on how well it matches the search intent.
-
-SCORING CRITERIA (evaluate each dimension, then combine into a final 0-100 score):
-1. PRODUCT TYPE MATCH (0-40 points): Does this product belong to the same general category?
-   - Same exact category (e.g. both phones) = 35-40
-   - Related category (e.g. phone case when searching for phone) = 15-30
-   - Different category (e.g. phone when searching for TV) = 0-5
-2. BRAND MATCH (0-25 points): Is the brand the same or compatible?
-   - Same brand = 20-25
-   - Compatible/generic = 10-15
-   - Wrong brand = 0-5
-3. MODEL/SPECIFICITY MATCH (0-25 points): Does the model or key specs align?
-   - Exact model match = 20-25
-   - Close variant (e.g. different color/capacity) = 10-18
-   - Generic or unrelated model = 0-5
-4. TITLE KEYWORD OVERLAP (0-10 points): How many meaningful search keywords appear in the title?
-   - All keywords = 8-10
-   - Most keywords = 5-7
-   - Few/no keywords = 0-2
-
-FINAL SCORE = product_type + brand + model + keyword_overlap, capped at 100.
-
-EXAMPLES (query: "آیفون 13 پرو 128"):
-- "آیفون 13 پرو 128GB" → 100 (exact match, all criteria maxed)
-- "آیفون 13 پرو 256GB" → 88 (same model, different capacity)
-- "آیفون 13 پرو" → 85 (same model, no capacity mentioned)
-- "آیفون 12 پرو 128" → 68 (previous generation)
-- "کاور آیفون 13 پرو" → 25 (case, not the phone itself)
-- "ساعت هوشمند Apple" → 5 (completely different product)
-
-Products:
-{products_text}
-
-Return ONLY a JSON array of integers (0-100), one per product, in the same order.
-Example: [85, 42, 90, 7, 100]'''
+    if source_product:
+        context = _build_source_context(source_product)
+        prompt = _build_product_comparison_prompt(query, context, products_text)
+    else:
+        prompt = _build_query_comparison_prompt(query, products_text)
 
     try:
         async with httpx.AsyncClient(
@@ -127,3 +110,93 @@ Example: [85, 42, 90, 7, 100]'''
         query,
     )
     return result
+
+
+def _build_query_comparison_prompt(query: str, products_text: str) -> str:
+    """Build a prompt comparing marketplace products to a text search query."""
+    return f'''You are an e-commerce product matching expert.
+
+A shopper is searching for: "{query}"
+
+For each product, assign a similarity score from 0-100 based on how well it matches the search intent.
+
+SCORING CRITERIA (evaluate each dimension, then combine into a final 0-100 score):
+1. PRODUCT TYPE MATCH (0-40 points): Does this product belong to the same general category?
+   - Same exact category (e.g. both phones) = 35-40
+   - Related category (e.g. phone case when searching for phone) = 15-30
+   - Different category (e.g. phone when searching for TV) = 0-5
+2. BRAND MATCH (0-25 points): Is the brand the same or compatible?
+   - Same brand = 20-25
+   - Compatible/generic = 10-15
+   - Wrong brand = 0-5
+3. MODEL/SPECIFICITY MATCH (0-25 points): Does the model or key specs align?
+   - Exact model match = 20-25
+   - Close variant (e.g. different color/capacity) = 10-18
+   - Generic or unrelated model = 0-5
+4. TITLE KEYWORD OVERLAP (0-10 points): How many meaningful search keywords appear in the title?
+   - All keywords = 8-10
+   - Most keywords = 5-7
+   - Few/no keywords = 0-2
+
+FINAL SCORE = product_type + brand + model + keyword_overlap, capped at 100.
+
+EXAMPLES (query: "آیفون 13 پرو 128"):
+- "آیفون 13 پرو 128GB" → 100 (exact match, all criteria maxed)
+- "آیفون 13 پرو 256GB" → 88 (same model, different capacity)
+- "آیفون 13 پرو" → 85 (same model, no capacity mentioned)
+- "آیفون 12 پرو 128" → 68 (previous generation)
+- "کاور آیفون 13 پرو" → 25 (case, not the phone itself)
+- "ساعت هوشمند Apple" → 5 (completely different product)
+
+Products:
+{products_text}
+
+Return ONLY a JSON array of integers (0-100), one per product, in the same order.
+Example: [85, 42, 90, 7, 100]'''
+
+
+def _build_product_comparison_prompt(
+    query: str, source_context: str, products_text: str
+) -> str:
+    """Build a prompt comparing marketplace products to a full source product."""
+    return f'''You are an expert e-commerce product matching assistant.
+
+A shopper is viewing this product on Basalam:
+{source_context}
+
+Now you need to find the most similar products from these marketplace search results.
+Rate each result product from 0-100 based on how well it matches the source product above.
+
+SCORING CRITERIA (evaluate each dimension, then combine into a final 0-100 score):
+1. PRODUCT TYPE MATCH (0-40 points): Is it the same type of product?
+   - Same product type (e.g. source is phone, result is phone) = 35-40
+   - Related/Accessory category (e.g. phone case, screen protector) = 15-30
+   - Completely different product = 0-5
+2. BRAND MATCH (0-25 points): Is the brand the same?
+   - Same brand = 20-25
+   - Compatible/generic/unbranded = 10-15
+   - Different brand = 0-5
+3. MODEL/SPECIFICITY MATCH (0-25 points): Does the model or key specs match?
+   - Exact model + specs = 20-25
+   - Same model with minor spec differences = 10-18
+   - Generic or unrelated model = 0-5
+4. TITLE KEYWORD OVERLAP (0-10 points): How many key terms from the source appear in the result title?
+   - All key terms = 8-10
+   - Most key terms = 5-7
+   - Few/no key terms = 0-2
+
+FINAL SCORE = product_type + brand + model + keyword_overlap, capped at 100.
+
+EXAMPLES (source: "آیفون 13 پرو 128GB"):
+- "آیفون 13 پرو 256GB" → 88 (exact model, different capacity)
+- "آیفون 13 پرو" → 85 (same model, capacity not specified)
+- "آیفون 12 پرو 128GB" → 68 (previous generation model)
+- "کاور آیفون 13 پرو" → 25 (accessory, not the actual phone)
+- "ساعت هوشمند شیائومی" → 5 (completely different product)
+- "آیفون 14 پرو 128GB" → 60 (newer generation, same line)
+
+Marketplace search results (24 per source, up to 72 total):
+{products_text}
+
+Return ONLY a JSON array of integers (0-100), one per product, in the same order.
+Example: [88, 85, 68, 25, 5, 60]'''

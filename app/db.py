@@ -121,6 +121,38 @@ def init_db() -> None:
                 last_checked_at TEXT NOT NULL,
                 last_notified_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS user_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT,
+                user_id INTEGER,
+                feedback_type TEXT NOT NULL,
+                target_url TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_feedback_target
+              ON user_feedback(target_url, created_at);
+            CREATE TABLE IF NOT EXISTS button_click_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                button_name TEXT NOT NULL,
+                product_id TEXT,
+                store_id TEXT,
+                client_id TEXT,
+                user_id INTEGER,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_button_clicks_button
+              ON button_click_metrics(button_name, created_at);
+            CREATE TABLE IF NOT EXISTS store_page_views (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                store_id TEXT NOT NULL,
+                client_id TEXT,
+                user_id INTEGER,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_store_page_views_store
+              ON store_page_views(store_id, created_at);
             """
         )
         account_columns = {

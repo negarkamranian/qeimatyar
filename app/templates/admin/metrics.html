@@ -1,0 +1,73 @@
+{% extends "admin/base.html" %}
+{% block title %}متریک‌ها — پنل مدیریت{% endblock %}
+{% block content %}
+<h1>متریک‌های کاربری و بازخورد</h1>
+<p class="hint">در این بخش بازخوردهای کاربران، کلیک‌ها و بازدیدهای صفحات غرفه نمایش داده می‌شوند.</p>
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="hint">کل بازخوردها</div>
+    <strong>{{ total_feedback }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">لایک قیمت</div>
+    <strong>{{ recommendation_likes }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">دیسلایک قیمت</div>
+    <strong>{{ recommendation_dislikes }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">لایک محصول</div>
+    <strong>{{ similarity_likes }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">دیسلایک محصول</div>
+    <strong>{{ similarity_dislikes }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">کلیک دکمه بروزرسانی قیمت</div>
+    <strong>{{ total_clicks }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">بازدید صفحات غرفه</div>
+    <strong>{{ total_store_views }}</strong>
+  </div>
+</div>
+<div class="card">
+  <h2>آخرین بازخوردها</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>زمان</th>
+        <th>نوع</th>
+        <th>امتیاز</th>
+        <th>محصول / لینک</th>
+        <th>آی‌دی کاربر</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for fb in recent_feedback %}
+      <tr>
+        <td>{{ fb.created_at }}</td>
+        <td>{{ "قیمت" if fb.feedback_type == "recommendation" else "محصول" }}</td>
+        <td>
+          {% if fb.rating > 0 %}👍{% elif fb.rating < 0 %}👎{% else %}⚪{% endif %}
+        </td>
+        <td dir="ltr">{{ fb.target_url[:80] }}</td>
+        <td>{{ fb.user_id or fb.client_id[:12] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+{% block extra_data %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const toasts = document.querySelectorAll(".toast");
+  toasts.forEach(toast => {
+    setTimeout(() => toast.classList.add("hide"), 4000);
+  });
+});
+</script>
+{% endblock %}
