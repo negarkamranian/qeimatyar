@@ -30,8 +30,20 @@
     <span id="result-basalam" class="test-result">—</span>
   </div>
   <div class="test-row">
-    <button id="test-marketplaces" class="ghost-button">تست جست‌وجو در ترب/دیجی‌کالا/باسلام</button>
+    <button id="test-marketplaces" class="ghost-button">تست جست‌وجو در تمام بازارها</button>
     <span id="result-marketplaces" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-torob" class="ghost-button">تست ترب</button>
+    <span id="result-torob" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-digikala" class="ghost-button">تست دیجی‌کالا</button>
+    <span id="result-digikala" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-basalam-market" class="ghost-button">تست باسلام مارکت‌پلیس</button>
+    <span id="result-basalam-market" class="test-result">—</span>
   </div>
   <div class="test-row">
     <button id="test-llm" class="ghost-button">تست اتصال AvalAI LLM</button>
@@ -53,7 +65,7 @@
 {% block extra_data %}
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  async function runTest(buttonId, resultId, endpoint, hasPrompt = false) {
+  async function runTest(buttonId, resultId, endpoint, hasPrompt = false, sourceFilter = null) {
     const btn = document.getElementById(buttonId);
     const result = document.getElementById(resultId);
     btn.disabled = true;
@@ -73,13 +85,26 @@ document.addEventListener("DOMContentLoaded", function() {
       const response = await fetch(endpoint, options);
       const data = await response.json();
       if (data.ok) {
-        result.textContent = data.message || "موفق";
-        result.className = "test-result success";
+        if (data.results && sourceFilter) {
+          const srcResult = data.results[sourceFilter];
+          if (srcResult) {
+            result.textContent = srcResult.ok
+              ? `${srcResult.count} محصول — موفق`
+              : `ناموفق: ${srcResult.message || "خطا"}`;
+            result.className = "test-result " + (srcResult.ok ? "success" : "error");
+          } else {
+            result.textContent = "منبع یافت نشد";
+            result.className = "test-result error";
+          }
+        } else {
+          result.textContent = data.message || "موفق";
+          result.className = "test-result success";
+        }
       } else {
         result.textContent = data.message || "ناموفق";
         result.className = "test-result error";
       }
-      if (data.response) {
+      if (data.response && !sourceFilter) {
         result.textContent += " → " + data.response.substring(0, 80);
       }
     } catch (e) {
@@ -93,13 +118,16 @@ document.addEventListener("DOMContentLoaded", function() {
 
   const tests = [
     {id: "test-basalam", result: "result-basalam", endpoint: "/admin/test/basalam"},
-    {id: "test-marketplaces", result: "result-marketplaces", endpoint: "/admin/test/marketplace"},
+    {id: "test-marketplaces", result: "result-marketplaces", endpoint: "/admin/test/marketplace", source: null},
+    {id: "test-torob", result: "result-torob", endpoint: "/admin/test/marketplace", source: "torob"},
+    {id: "test-digikala", result: "result-digikala", endpoint: "/admin/test/marketplace", source: "digikala"},
+    {id: "test-basalam-market", result: "result-basalam-market", endpoint: "/admin/test/marketplace", source: "basalam"},
     {id: "test-llm", result: "result-llm", endpoint: "/admin/test/llm", hasPrompt: true},
   ];
   tests.forEach(t => {
     const btn = document.getElementById(t.id);
     btn.dataset.original = btn.textContent;
-    btn.addEventListener("click", () => runTest(t.id, t.result, t.endpoint, t.hasPrompt));
+    btn.addEventListener("click", () => runTest(t.id, t.result, t.endpoint, t.hasPrompt, t.source));
   });
 });
 </script>

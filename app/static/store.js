@@ -66,6 +66,9 @@ function productRow(product) {
   const range = hasEstimate
     ? `<strong>${toman(analysis.range.low)} تا ${toman(analysis.range.high)}</strong>`
     : `<strong class="estimate-error">${escapeHtml(analysis?.estimate_error || "تحلیل نشده")}</strong>`;
+  const recommended = hasEstimate
+    ? `<small class="recommended-price">پیشنهادی: ${toman(analysis.recommended)} تومان</small>`
+    : "";
   const analysisUrl = `/?q=${encodeURIComponent(product.url)}&from=store&store_id=${encodeURIComponent(state.storeId || "")}`;
   const hasLlm = analysis?.llm_similarity_enabled;
   const topMatch = hasEstimate && analysis.listings && analysis.listings.length > 0
@@ -77,14 +80,13 @@ function productRow(product) {
       <small>موجودی ${fa(product.stock || 0)} · تحلیل بازار</small>
     </span></a>
     <div class="price-block"><small>قیمت فعلی</small><strong>${toman(product.current_price || 0)} تومان</strong></div>
-    <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
+    <div class="range-block"><small>بازه پیشنهای شده</small>${range}${recommended}</div>
     <div class="llm-info"><small>${hasLlm ? "🤖 LLM فعال" : "⚙️ توکن"} · برتر: ${escapeHtml(topMatch)}</small></div>
     <div class="product-actions">
       <a class="analysis-link" href="${analysisUrl}" onclick="recordButtonClick('store_analysis', ${product.product_id})">تحلیل بازار</a>
       ${hasEstimate && analysis.recommended
         ? `<button class="set-price-btn" onclick="setPriceInBasalam(${product.product_id}, ${analysis.recommended})">تنظیم قیمت در باسلام به ${toman(analysis.recommended)} تومان</button>`
-        : ""
-      }
+        : ""}
     </div>
   </article>`;
 }
@@ -148,5 +150,18 @@ async function analyzeStore() {
 
 document.querySelector("#product-filter")?.addEventListener("input", renderProducts);
 document.querySelector("#analyze-store")?.addEventListener("click", analyzeStore);
+document.querySelector("#refresh-products-store")?.addEventListener("click", async function() {
+  recordButtonClick("refresh_products_store");
+  const button = document.querySelector("#refresh-products-store");
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "به‌روزرسانی…";
+  try {
+    await analyzeStore();
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+});
 
 loadStore().catch(error => toast(error.message || String(error)));
