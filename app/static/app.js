@@ -285,11 +285,8 @@ function updateSelectedPrice() {
   }
 }
 
-document.querySelector("#search-form").addEventListener("submit", event => {
-  event.preventDefault();
-  const input = document.querySelector("#product-name");
-  const productName = input.value.trim();
-  if (productName.length >= 2) analyze(productName);
+document.addEventListener("DOMContentLoaded", () => {
+  showSuggestions();
 });
 
 document.querySelectorAll("[data-example]").forEach(button => {
@@ -318,11 +315,56 @@ document.querySelector("#new-search").addEventListener("click", () => {
   document.querySelector("#merchant-price-note").hidden = true;
   showView("search");
   document.querySelector("#product-name").focus();
+  showSuggestions();
 });
 document.querySelector("#retry-button").addEventListener("click", () => {
   showView("search");
   document.querySelector("#product-name").focus();
+  showSuggestions();
 });
+
+const suggestionsBox = document.querySelector("#suggestions-box");
+const suggestionsClose = document.querySelector("#close-suggestions");
+const searchText = document.querySelector("#product-name");
+
+function showSuggestions() {
+  if (!currentAnalysis && searchText.value.trim().length === 0) {
+    suggestionsBox.hidden = false;
+  }
+}
+
+function hideSuggestions() {
+  suggestionsBox.hidden = true;
+}
+
+searchText.addEventListener("focus", showSuggestions);
+searchText.addEventListener("input", () => {
+  if (searchText.value.trim().length > 0) {
+    suggestionsBox.hidden = true;
+  } else {
+    suggestionsBox.hidden = false;
+  }
+});
+
+suggestionsClose.addEventListener("click", hideSuggestions);
+
+document.querySelectorAll(".suggestion-chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    searchText.value = chip.dataset.example;
+    hideSuggestions();
+    analyze(chip.dataset.example);
+  });
+});
+
+document.querySelector("#search-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const productName = searchText.value.trim();
+  if (productName.length >= 2) {
+    hideSuggestions();
+    analyze(productName);
+  }
+});
+
 document.querySelector("#toggle-listings").addEventListener("click", event => {
   const grid = document.querySelector("#listings");
   grid.classList.toggle("expanded");

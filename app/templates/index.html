@@ -39,6 +39,11 @@
         <p>نام دقیق یا لینک محصول را وارد کن؛ قیمت‌های مشابه را پیدا می‌کنیم و یک بازه مناسب فروش پیشنهاد می‌دهیم.</p>
       </div>
 
+      <div class="query-helper">
+        <strong>نکته نوشتن جست‌وجو</strong>
+        <p>برای دقیق‌ترین نتیجه، نام محصول را کامل وارد کنید: برند، مدل، مقدار یا واحد (مثلاً «عسل آویشن ۹۰۰ گرم» یا «کاور آیفون ۱۵ پرو مگا»). هر چه توضیح بیشتر بدید، قیمت‌های مرتبط دقیق‌تر انتخاب می‌شوند.</p>
+      </div>
+
       <form id="search-form" class="search-box">
         <label for="product-name">نام یا لینک محصول</label>
         <div class="search-control">
@@ -62,6 +67,21 @@
           <button type="button" data-example="هدفون بی سیم انکر Soundcore Q30">هدفون Anker Q30</button>
         </div>
       </form>
+
+      <div id="suggestions-box" class="suggestions-box">
+        <div class="suggestions-header">
+          <span>محصولات مشابه پیشنهادی</span>
+          <button type="button" id="close-suggestions" class="suggestions-close" aria-label="بستن">✕</button>
+        </div>
+        <div class="suggestions-grid">
+          <button type="button" class="suggestion-chip" data-example="عسل طبیعی آویشن ۹۰۰ گرم">عسل آویشن ۹۰۰ گرم</button>
+          <button type="button" class="suggestion-chip" data-example="کاور آیفون ۱۵ پرو مگا">کاور آیفون ۱۵ پرو مگا</button>
+          <button type="button" class="suggestion-chip" data-example="شارژر سریع USB-C ۲۵ وات">شارژر USB-C ۲۵ وات</button>
+          <button type="button" class="suggestion-chip" data-example="هدفون بی‌سیم انکر Soundcore Q30">هدفون Anker Q30</button>
+          <button type="button" class="suggestion-chip" data-example="قاشق غذاخوری فلزی 16 قطعی">قاشق غذاخوری فلزی 16 قطعی</button>
+          <button type="button" class="suggestion-chip" data-example="کرم مراقبت از چرخه بارداری 500 میلی‌گرم">کرم مراقبت از باردار 500mg</button>
+        </div>
+      </div>
 
       <div class="trust-row" aria-label="منابع قیمت">
         <div><span class="source-logo torob">ت</span><strong>ترب</strong><small>مقایسه فروشگاه‌ها</small></div>
@@ -188,6 +208,6 @@
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260802-1" defer></script>
+  <script src="/static/app.js?v=20260802-2" defer></script>
 </body>
 </html>

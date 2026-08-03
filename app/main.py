@@ -226,19 +226,15 @@ def admin_update_settings(
 ) -> RedirectResponse:
     if request is not None and not _admin_session(request):
         raise HTTPException(401, "دسترسی مجاز نیست.")
-    app_env_value = str(app_env or settings.app_env)
-    app_log_level_value = str(app_log_level or settings.log_level)
-    app_base_url_value = str(app_base_url or settings.base_url)
-    demo_mode_value = str(demo_mode or settings.demo_mode).lower()
     overrides = {
-        "MERCHANT_SYNC_HOURS": merchant_sync_hours if merchant_sync_hours is not None else settings.merchant_sync_hours,
-        "USDT_NOTIFICATION_ENABLED": usdt_notification_enabled if usdt_notification_enabled is not None else str(settings.usdt_notification_enabled).lower(),
-        "USDT_NOTIFICATION_PERCENT": usdt_notification_percent if usdt_notification_percent is not None else settings.usdt_notification_percent,
-        "USDT_CHECK_INTERVAL_MINUTES": usdt_check_interval_minutes if usdt_check_interval_minutes is not None else settings.usdt_check_interval_minutes,
-        "APP_ENV": app_env_value,
-        "APP_LOG_LEVEL": app_log_level_value,
-        "APP_BASE_URL": app_base_url_value,
-        "DEMO_MODE": demo_mode_value,
+        "MERCHANT_SYNC_HOURS": merchant_sync_hours if isinstance(merchant_sync_hours, int) else settings.merchant_sync_hours,
+        "USDT_NOTIFICATION_ENABLED": usdt_notification_enabled if isinstance(usdt_notification_enabled, str) else str(settings.usdt_notification_enabled).lower(),
+        "USDT_NOTIFICATION_PERCENT": usdt_notification_percent if isinstance(usdt_notification_percent, (int, float)) else settings.usdt_notification_percent,
+        "USDT_CHECK_INTERVAL_MINUTES": usdt_check_interval_minutes if isinstance(usdt_check_interval_minutes, int) else settings.usdt_check_interval_minutes,
+        "APP_ENV": app_env if isinstance(app_env, str) else str(settings.app_env),
+        "APP_LOG_LEVEL": app_log_level if isinstance(app_log_level, str) else str(settings.log_level),
+        "APP_BASE_URL": app_base_url if isinstance(app_base_url, str) else str(settings.base_url),
+        "DEMO_MODE": demo_mode if isinstance(demo_mode, str) else str(settings.demo_mode).lower(),
     }
     try:
         save_admin_overrides(overrides)
