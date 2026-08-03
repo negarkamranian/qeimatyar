@@ -282,7 +282,7 @@ class PolicyInput(BaseModel):
 class MarketSearchInput(BaseModel):
     product_name: str = Field(min_length=2, max_length=1000)
     exclude_basalam_product_id: int | None = Field(default=None, gt=0)
-
+    listings_with_user_state: list[dict[str, Any]] | None = Field(default=None)
 
 class RangeOverrideInput(BaseModel):
     min_price: int | None = Field(default=None, gt=0)
@@ -430,7 +430,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         if merchant_rows:
             merchant_product = merchant_rows[0]
     try:
-        crawl = await market_crawler.search(query)
+        crawl = await market_crawler.search(query, user_states=payload.listings_with_user_state)
     except Exception as exc:
         logger.exception("Marketplace crawler initialization failed")
         raise HTTPException(

@@ -215,10 +215,10 @@ class MarketCrawler:
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
 
-    async def search(self, query: str) -> dict[str, Any]:
+    async def search(self, query: str, user_states=None) -> dict[str, Any]:
         key = normalize_text(query)
         cached = self._cache.get(key)
-        if cached and time.monotonic() - cached[0] < self.cache_seconds:
+        if cached and time.monotonic() - cached[0] < self.cache_seconds and user_states is None:  # TODO: here, I'm killing the cache
             return cached[1]
 
         headers = {
@@ -252,20 +252,36 @@ class MarketCrawler:
                 continue
             listings.extend(outcome)
             statuses.append(SourceStatus(source, True, len(outcome)))
+        if user_states is None:
+            # Relevance threshold is intentionally permissive for short generic queries.
+            query_size = len(_tokens(query))
+            threshold = 0.48 if query_size >= 3 else 0.34
+            relevant = [item for item in listings if item.similarity >= threshold]
+            relevant.sort(key=lambda item: (-item.similarity, item.price))
+        else:  # user_state is not None 
+            liked_urls = [item["url"] for item in user_states if item["userState"] == "like"]
+            disliked_urls = [item["url"] for item in user_states if item["userState"] == "dislike"]
+            good_tokens = set.union(*[_tokens(item["title"]) for item in user_states if item["userState"] == "like"], _tokens(query))
+            bad_tokens = set.union(*[_tokens(item["title"]) for item in user_states if item["userState"] == "dislike"]) - good_tokens
 
-        # Relevance threshold is intentionally permissive for short generic queries.
-        query_size = len(_tokens(query))
-        threshold = 0.48 if query_size >= 3 else 0.34
-        relevant = [item for item in listings if item.similarity >= threshold]
-        relevant.sort(key=lambda item: (-item.similarity, item.price))
-
+            liked_listings: list[MarketListing] = []
+            new_listings: list[MarketListing] = []
+            for item in listings:
+                if item.url in liked_urls: liked_listings.append(item)
+                elif item.url not in disliked_urls and len(_tokens(item.title) & bad_tokens) == 0: new_listings.append(item)
+            query_size = len(_tokens(query))
+            threshold = 0.48 if query_size >= 3 else 0.34
+            relevant = [item for item in new_listings if item.similarity >= threshold] + liked_listings
+            relevant.sort(key=lambda item: (-item.similarity, item.price))
+            
         result = {
             "listings": relevant[:60],
             "sources": statuses,
             "raw_count": len(listings),
         }
-        async with self._lock:
-            self._cache[key] = (time.monotonic(), result)
+        if user_states is None:  # TODO: here, I'm killing the cache
+            async with self._lock:
+                self._cache[key] = (time.monotonic(), result)
         return result
 
     async def _torob(self, client: httpx.AsyncClient, query: str) -> list[MarketListing]:

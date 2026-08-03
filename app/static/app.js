@@ -91,7 +91,7 @@ function applySliderMarkerLayout() {
   priceSlider.style.setProperty("--marker-rows", rows.count);
 }
 
-async function analyze(productName) {
+async function analyze(productName, userStates=null) {
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.set("q", productName);
   window.history.replaceState({}, "", nextUrl);
@@ -102,6 +102,9 @@ async function analyze(productName) {
     const requestBody = { product_name: productName };
     if (merchantContext.active && merchantContext.productId) {
       requestBody.exclude_basalam_product_id = merchantContext.productId;
+    }
+    if (userStates) {
+      requestBody.listings_with_user_state = userStates;
     }
     const response = await fetch("/api/market/analyze", {
       method: "POST",
@@ -342,7 +345,16 @@ document.querySelector("#toggle-listings").addEventListener("click", event => {
 document.querySelector("#edit-listings").addEventListener("click", event => {
   const grid = document.querySelector("#listings");
   grid.classList.toggle("editing");
-  event.currentTarget.textContent = grid.classList.contains("editing") ? "اتمام ویرایش" : "ویرایش";
+  const isEditing = grid.classList.contains("editing");
+
+  event.currentTarget.textContent = isEditing ? "اتمام ویرایش" : "ویرایش";
+
+  if (!isEditing) {
+    if (!currentAnalysis || !currentAnalysis.listings) return;
+    
+    const productName = document.querySelector("#result-title").textContent;
+    analyze(productName, currentAnalysis.listings);
+  }
 });
 document.querySelector("#listings").addEventListener("click", event => {
   const grid = event.currentTarget;
