@@ -1416,7 +1416,7 @@ async def merchant_analyze_product(
         "title": product["title"],
         "source_product": source_product,
         "analysis": analysis,
-        "basalam_edit_url": f"https://basalam.com/vendor/products/{product_id_val}",
+        "basalam_edit_url": f"https://vendor.basalam.com/edit-product/{product_id_val}",
     }
 
 
@@ -1512,6 +1512,26 @@ def merchant_manual_sync(
             (user_id,),
         )
     background_tasks.add_task(merchant_sync.sync_user, user_id)
+    return {"ok": True, "status": "queued"}
+
+
+@app.post("/api/merchant/refresh-prices")
+def merchant_price_refresh(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    account = rows("SELECT sync_status FROM accounts WHERE user_id=?", (user_id,))
+    if not account:
+        raise HTTPException(404, "غرفه پیدا نشد.")
+    if account[0]["sync_status"] in {"running", "queued"}:
+        return {"ok": True, "status": account[0]["sync_status"]}
+    with connection() as db:
+        db.execute(
+            "UPDATE accounts SET sync_status='queued',sync_error=NULL WHERE user_id=?",
+            (user_id,),
+        )
+    background_tasks.add_task(merchant_sync.refresh_prices, user_id)
     return {"ok": True, "status": "queued"}
 
 

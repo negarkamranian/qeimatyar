@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/merchant.css?v=20260729-6">
+  <link rel="stylesheet" href="/static/merchant.css?v=20260804-2">
 </head>
 <body>
   <header class="simple-header">
@@ -42,8 +42,10 @@
         <h1>{{ account.vendor_title }}</h1>
         <p id="sync-caption">در حال دریافت وضعیت…</p>
       </div>
-      <button id="sync-button" class="sync-button">به‌روزرسانی قیمت‌ها</button>
-      <button id="sync-products-button" class="sync-button">به‌روزرسانی محصولات</button>
+      <div class="merchant-sync-actions">
+        <button id="sync-button" class="sync-button primary">به‌روزرسانی قیمت‌ها</button>
+        <button id="sync-products-button" class="sync-button">دریافت دوباره محصولات</button>
+      </div>
     </section>
 
     <div class="calm-note">
@@ -67,6 +69,6 @@
   </main>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/merchant.js?v=20260803-1" defer></script>
+  <script src="/static/merchant.js?v=20260804-2" defer></script>
 </body>
 </html>

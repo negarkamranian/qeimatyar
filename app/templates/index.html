@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20260804-1">
+  <link rel="stylesheet" href="/static/app.css?v=20260804-2">
 </head>
 <body>
   <header class="site-header">
@@ -35,12 +35,7 @@
       <div class="hero-copy">
         <span class="eyebrow">ترب + دیجی‌کالا + باسلام</span>
         <h1>محصولت را چند بفروشی؟</h1>
-        <p>نام دقیق یا لینک محصول را وارد کن؛ قیمت‌های مشابه را پیدا می‌کنیم و یک بازه مناسب فروش پیشنهاد می‌دهیم.</p>
-      </div>
-
-      <div class="query-helper">
-        <strong>چگونه جست‌وجو کنیم؟</strong>
-        <p>لینک محصول خود را از باسلام در قالب <code>https://basalam.com/نام‌فروشگاه/product/شناسه</code> وارد کنید. قیمت‌های مشابه در ترب، دیجی‌کالا و باسلام یافت می‌شوند و بازه مناسب فروش پیشنهاد می‌شود.</p>
+        <p>لینک محصول باسلام را بده؛ قیمت مناسب را پیدا می‌کنیم.</p>
       </div>
 
       <form id="search-form" class="search-box">
@@ -58,12 +53,6 @@
             required
           >
           <button type="submit">بررسی قیمت</button>
-        </div>
-
-        <div class="search-toggle" style="margin-top: 8px; display: flex; gap: 8px; justify-content: center;">
-          <button type="button" id="toggle-web-search" class="ghost-button" style="font-size: 10px;">
-            جست‌وجو گسترده وب (نمایش ۱۸ نتیجه از ۳۶)
-          </button>
         </div>
 
         <div id="sample-products" class="sample-products">
@@ -85,7 +74,7 @@
         </div>
         <div>
           <strong>پیشنهاد شفاف</strong>
-          <p>نتایج نامرتبط و قیمت‌های پرت حذف می‌شوند؛ سپس چارک ۲۵، میانه و چارک ۷۵ به‌ترتیب برای فروش سریع، قیمت منصفانه و فروش صبورانه استفاده می‌شوند.</p>
+          <p>قیمت‌های نامرتبط حذف می‌شوند و نقطه بهینه از میانه بازار به‌دست می‌آید.</p>
         </div>
       </section>
     </section>
@@ -118,6 +107,8 @@
         <small>تومان · این قیمت در محاسبه بازه و پیشنهاد استفاده نشده است.</small>
       </div>
 
+      <div class="analysis-workspace">
+        <div class="pricing-column">
       <div class="pricing-card">
         <div class="selected-price">
           <small id="selected-price-label">قیمت انتخابی شما</small>
@@ -126,8 +117,8 @@
 
         <div class="price-slider">
           <div id="sale-signal" class="sale-signal fair">
-            <span id="signal-title">قیمت منصفانه</span>
-            <p id="signal-copy">در مرکز قیمت‌های مشابه بازار قرار دارید.</p>
+            <span id="signal-title">قیمت بهینه</span>
+            <p id="signal-copy">در نقطه پیشنهادی بازار هستید.</p>
           </div>
           <div class="slider-track-wrap">
             <input id="price-slider" type="range">
@@ -193,6 +184,26 @@
           <div><small>اطمینان تحلیل</small><strong id="confidence">—</strong></div>
         </article>
       </div>
+        </div>
+
+        <aside class="matching-column">
+          <div class="matching-column-head">
+            <span class="eyebrow">تطبیق بهتر</span>
+            <h2>محصول مشابه است؟</h2>
+            <p>راست: مشابه · چپ: حذف قیمت</p>
+          </div>
+          <div id="swipe-review" class="swipe-review" hidden>
+            <div class="swipe-stage" aria-live="polite">
+              <div id="swipe-deck" class="swipe-deck"></div>
+            </div>
+            <div class="swipe-actions">
+              <button id="swipe-reject" class="swipe-action reject" type="button"><span aria-hidden="true">←</span> نامرتبط</button>
+              <span id="swipe-progress"></span>
+              <button id="swipe-accept" class="swipe-action accept" type="button">مشابه است <span aria-hidden="true">→</span></button>
+            </div>
+          </div>
+        </aside>
+      </div>
 
       <section class="matches">
         <div class="section-head">
@@ -202,21 +213,6 @@
           </div>
           <div>
             <button id="toggle-listings" class="text-button">نمایش همه</button>
-          </div>
-        </div>
-        <div id="swipe-review" class="swipe-review" hidden>
-          <div class="swipe-review-copy">
-            <span class="eyebrow">بهبود نتایج</span>
-            <h3>این محصول واقعاً مشابه است؟</h3>
-            <p>کارت را به راست بکشید اگر مشابه است؛ به چپ بکشید تا قیمت نامرتبط حذف شود.</p>
-          </div>
-          <div class="swipe-stage" aria-live="polite">
-            <div id="swipe-deck" class="swipe-deck"></div>
-          </div>
-          <div class="swipe-actions">
-            <button id="swipe-reject" class="swipe-action reject" type="button"><span aria-hidden="true">←</span> نامرتبط</button>
-            <span id="swipe-progress"></span>
-            <button id="swipe-accept" class="swipe-action accept" type="button">مشابه است <span aria-hidden="true">→</span></button>
           </div>
         </div>
         <div id="listings" class="listing-grid"></div>
@@ -241,6 +237,6 @@
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260804-1" defer></script>
+  <script src="/static/app.js?v=20260804-2" defer></script>
 </body>
 </html>

@@ -189,6 +189,39 @@ def test_merchant_sync_reads_products_and_stores_estimate(monkeypatch):
         _cleanup()
 
 
+def test_merchant_price_refresh_does_not_fetch_product_catalog(monkeypatch):
+    _insert_accounts_and_products()
+
+    async def catalog_must_not_be_called(*_):
+        raise AssertionError("price refresh must not fetch the Basalam product catalog")
+
+    async def fake_market_search(query):
+        return {
+            "listings": [
+                MarketListing("torob", query, 600_000, "", similarity=1),
+                MarketListing("digikala", query, 650_000, "", similarity=1),
+                MarketListing("basalam", query, 700_000, "", similarity=1),
+            ],
+            "sources": [],
+            "raw_count": 3,
+        }
+
+    monkeypatch.setattr("app.merchant_sync.basalam.products", catalog_must_not_be_called)
+    monkeypatch.setattr("app.merchant_sync.market_crawler.search", fake_market_search)
+    try:
+        result = asyncio.run(merchant_sync.refresh_prices(USER_ID))
+        assert result["ok"]
+        with connection() as db:
+            product = db.execute(
+                """SELECT market_suggested FROM merchant_products
+                WHERE user_id=? AND product_id=7001""",
+                (USER_ID,),
+            ).fetchone()
+        assert product["market_suggested"] == 650_000
+    finally:
+        _cleanup()
+
+
 def test_merchant_analysis_reads_current_price_server_side(monkeypatch):
     _insert_accounts_and_products()
 

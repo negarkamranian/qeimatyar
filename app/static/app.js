@@ -19,7 +19,6 @@ let merchantContext = {
 };
 const toman = value => new Intl.NumberFormat("fa-IR").format(Math.round(value || 0));
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
-let useWebSearch = false;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -53,12 +52,14 @@ function sliderBands(analysis) {
   const quick = Number(analysis.positions.quick);
   const fair = Number(analysis.positions.fair);
   const patient = Number(analysis.positions.patient);
-  const quickStop = percentageFor(quick, low, high);
-  const patientStart = percentageFor(patient, low, high);
+  const fairPosition = percentageFor(fair, low, high);
+  const optimalHalfWidth = Math.max(1.25, Math.min(3, ((patient - quick) / Math.max(high - low, 1)) * 6));
   return {
-    quickStop,
-    patientStart: Math.max(quickStop, patientStart),
-    fairPosition: percentageFor(fair, low, high),
+    quickStop: Math.max(0, fairPosition - optimalHalfWidth),
+    patientStart: Math.min(100, fairPosition + optimalHalfWidth),
+    fairPosition,
+    rangeLowPosition: percentageFor(quick, low, high),
+    rangeHighPosition: percentageFor(patient, low, high),
   };
 }
 
@@ -85,11 +86,11 @@ function applySliderMarkerLayout() {
   if (!currentSliderBands) return;
   const priceSlider = document.querySelector(".price-slider");
   const rows = markerRows([
-    { name: "quick", position: currentSliderBands.quickStop },
-    { name: "patient", position: currentSliderBands.patientStart },
+    { name: "quick", position: currentSliderBands.rangeLowPosition },
+    { name: "patient", position: currentSliderBands.rangeHighPosition },
   ]);
-  priceSlider.style.setProperty("--quick-position", `${currentSliderBands.quickStop}%`);
-  priceSlider.style.setProperty("--patient-position", `${currentSliderBands.patientStart}%`);
+  priceSlider.style.setProperty("--quick-position", `${currentSliderBands.rangeLowPosition}%`);
+  priceSlider.style.setProperty("--patient-position", `${currentSliderBands.rangeHighPosition}%`);
   priceSlider.style.setProperty("--quick-offset", `${rows.quick * 16}px`);
   priceSlider.style.setProperty("--patient-offset", `${rows.patient * 16}px`);
   priceSlider.style.setProperty("--marker-rows", rows.count);
@@ -140,8 +141,7 @@ async function analyze(productName) {
     if (merchantContext.active && merchantContext.productId) {
       requestBody.exclude_basalam_product_id = merchantContext.productId;
     }
-    const endpoint = useWebSearch ? "/api/market/analyze-extended" : "/api/market/analyze";
-    const response = await fetch(endpoint, {
+    const response = await fetch("/api/market/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
@@ -185,7 +185,7 @@ function renderResult(data) {
     setPriceBtn.onclick = () => {
       recordButtonClick("set_price_basalam", sourceProduct.product_id);
       window.open(
-        `https://basalam.com/vendor/products/${sourceProduct.product_id}`,
+        `https://vendor.basalam.com/edit-product/${sourceProduct.product_id}`,
         "_blank",
         "noopener",
       );
@@ -200,8 +200,8 @@ function renderResult(data) {
     updateBtn.onclick = () => {
       recordButtonClick("update_price_basalam", sourceProduct.product_id);
       const url = sourceProduct.product_id
-        ? `https://basalam.com/vendor/products/${sourceProduct.product_id}`
-        : "https://basalam.com/vendor/products";
+        ? `https://vendor.basalam.com/edit-product/${sourceProduct.product_id}`
+        : "https://vendor.basalam.com/products";
       window.open(url, "_blank", "noopener");
     };
   } else {
@@ -315,7 +315,7 @@ function setupUpdateBasalamButton() {
     btn.innerHTML = '<span>💰</span>استفاده از این قیمت در غرفه';
     btn.onclick = () => {
       recordButtonClick("use_price_in_store", sourceProduct.product_id);
-      window.open(`https://basalam.com/vendor/products/${sourceProduct.product_id}`, "_blank", "noopener");
+      window.open(`https://vendor.basalam.com/edit-product/${sourceProduct.product_id}`, "_blank", "noopener");
     };
   }
 }
@@ -355,7 +355,7 @@ function setupSliderButtons() {
       basalamBtn.onclick = () => {
         recordButtonClick("update_price_basalam", sourceProduct.product_id);
         window.open(
-          `https://basalam.com/vendor/products/${sourceProduct.product_id}`,
+          `https://vendor.basalam.com/edit-product/${sourceProduct.product_id}`,
           "_blank",
           "noopener",
         );
@@ -542,12 +542,16 @@ function computeElasticity(value, recommended, low, high) {
   }
   const distancePct = ((value - recommended) / recommended) * 100;
   const absDistance = Math.abs(distancePct);
+  const sideSpan = value >= recommended
+    ? Math.max(high - recommended, recommended * 0.05)
+    : Math.max(recommended - low, recommended * 0.05);
+  const boundDistance = Math.abs(value - recommended) / sideSpan;
   let elasticity = 1.0;
-  if (absDistance < 3) {
+  if (boundDistance < 0.15) {
     elasticity = 0.7;
-  } else if (absDistance < 8) {
+  } else if (boundDistance < 0.4) {
     elasticity = 1.1;
-  } else if (absDistance < 15) {
+  } else if (boundDistance < 0.75) {
     elasticity = 1.4;
   } else {
     elasticity = 1.8;
@@ -579,7 +583,13 @@ function updateSelectedPrice() {
   const position = percentageFor(value, low, high);
   const signal = document.querySelector("#sale-signal");
   const recommended = Number(currentAnalysis.analysis?.recommended || 0);
-  const elasticity = computeElasticity(value, recommended, low, high);
+  const recommendedRange = currentAnalysis.analysis?.range || { low, high };
+  const elasticity = computeElasticity(
+    value,
+    recommended,
+    Number(recommendedRange.low),
+    Number(recommendedRange.high),
+  );
   const demandChange = elasticity.demandChangePct;
   const revenueChange = elasticity.revenueChangePct;
   const distancePct = elasticity.distancePct;
@@ -588,16 +598,17 @@ function updateSelectedPrice() {
   selectedPriceEl.textContent = toman(value);
 
   signal.classList.remove("quick", "fair", "patient");
-  if (currentSliderBands && position < currentSliderBands.quickStop) {
+  const optimalTolerance = Math.max(Number(slider.step) / 2, recommended * 0.001);
+  if (value < recommended - optimalTolerance) {
     signal.classList.add("quick");
     document.querySelector("#signal-title").textContent = "فروش سریع‌تر";
     document.querySelector("#signal-copy").textContent = "قیمت شما در بخش رقابتی بازار است و احتمال فروش سریع‌تر می‌شود.";
     slider.style.setProperty("--thumb", "var(--blue)");
     selectedPriceEl.style.color = "var(--blue)";
-  } else if (currentSliderBands && position <= currentSliderBands.patientStart) {
+  } else if (value <= recommended + optimalTolerance) {
     signal.classList.add("fair");
-    document.querySelector("#signal-title").textContent = "قیمت منصفانه";
-    document.querySelector("#signal-copy").textContent = "در مرکز قیمت‌های مشابه بازار قرار دارید.";
+    document.querySelector("#signal-title").textContent = "قیمت بهینه";
+    document.querySelector("#signal-copy").textContent = "در نقطه پیشنهادی بازار هستید.";
     slider.style.setProperty("--thumb", "var(--teal)");
     selectedPriceEl.style.color = Math.abs(value - recommended) < TOLERANCE ? "var(--green)" : "var(--ink)";
   } else {
@@ -665,16 +676,6 @@ document.querySelector("#search-form").addEventListener("submit", event => {
   if (productName.length >= 2) {
     analyze(productName);
   }
-});
-
-document.querySelector("#toggle-web-search").addEventListener("click", () => {
-  useWebSearch = !useWebSearch;
-  const btn = document.querySelector("#toggle-web-search");
-  btn.textContent = useWebSearch
-    ? "✓ جست‌وجو گسترده وب (نمایش ۱۸ نتیجه از ۳۶)"
-    : "جست‌وجو گسترده وب (نمایش ۱۸ نتیجه از ۳۶)";
-  btn.style.background = useWebSearch ? "var(--teal)" : "transparent";
-  btn.style.color = useWebSearch ? "#fff" : "var(--muted)";
 });
 
 document.querySelector("#toggle-listings").addEventListener("click", event => {

@@ -54,7 +54,7 @@ function recordButtonClick(buttonName, productId) {
 }
 function setPriceInBasalam(productId, price) {
   recordButtonClick("set_price_basalam_store", productId);
-  window.open(`https://basalam.com/vendor/products/${productId}`, "_blank", "noopener");
+  window.open(`https://vendor.basalam.com/edit-product/${productId}`, "_blank", "noopener");
 }
 
 function productRow(product) {

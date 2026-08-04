@@ -66,7 +66,7 @@ function productAnalysisUrl(product) {
   return `/?${params.toString()}`;
 }
 function productBasalamEditUrl(product) {
-  return `https://basalam.com/vendor/products/${product.product_id}`;
+  return `https://vendor.basalam.com/edit-product/${product.product_id}`;
 }
 async function recordButtonClick(buttonName, productId = null) {
   try {
@@ -145,7 +145,7 @@ function renderProducts() {
 }
 function setPriceInBasalam(productId, price) {
   recordButtonClick("set_price_basalam_merchant", productId);
-  const url = `https://basalam.com/vendor/products/${productId}`;
+  const url = `https://vendor.basalam.com/edit-product/${productId}`;
   window.open(url, "_blank", "noopener");
 }
 async function loadDashboard() {
@@ -154,8 +154,12 @@ async function loadDashboard() {
   state.status = data.account.sync_status;
   const running = ["running", "queued"].includes(state.status);
   document.querySelector("#sync-state").hidden = !running;
-  document.querySelector("#sync-button").disabled = running;
-  document.querySelector("#sync-button").textContent = running ? "در حال به‌روزرسانی…" : "به‌روزرسانی قیمت‌ها";
+  const priceButton = document.querySelector("#sync-button");
+  const productsButton = document.querySelector("#sync-products-button");
+  priceButton.disabled = running;
+  productsButton.disabled = running;
+  priceButton.textContent = running ? "در حال به‌روزرسانی…" : "به‌روزرسانی قیمت‌ها";
+  productsButton.textContent = running ? "در حال همگام‌سازی…" : "دریافت دوباره محصولات";
   document.querySelector("#sync-caption").textContent = data.account.sync_error
     || `آخرین به‌روزرسانی: ${formatDate(data.account.last_synced_at)}`;
   renderProducts();
@@ -166,8 +170,9 @@ async function startSync() {
   const button = document.querySelector("#sync-button");
   button.disabled = true;
   try {
-    await api("/api/merchant/sync", { method: "POST" });
-    toast("به‌روزرسانی شروع شد.");
+    recordButtonClick("refresh_market_prices");
+    await api("/api/merchant/refresh-prices", { method: "POST" });
+    toast("به‌روزرسانی قیمت‌های بازار شروع شد.");
     await loadDashboard();
   } catch (error) {
     button.disabled = false;
@@ -179,7 +184,6 @@ document.querySelector("#sync-products-button").addEventListener("click", async 
   recordButtonClick("sync_products");
   const button = document.querySelector("#sync-products-button");
   button.disabled = true;
-  const originalText = button.textContent;
   button.textContent = "در حال به‌روزرسانی…";
   try {
     await api("/api/merchant/sync", { method: "POST" });
@@ -187,7 +191,7 @@ document.querySelector("#sync-products-button").addEventListener("click", async 
     await loadDashboard();
   } catch (error) {
     button.disabled = false;
-    button.textContent = originalText;
+    button.textContent = "دریافت دوباره محصولات";
     toast(error.message);
   }
 });

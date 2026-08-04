@@ -232,6 +232,100 @@ class MerchantSyncService:
                     )
                 return {"ok": False, "status": "failed", "message": str(exc)}
 
+    async def refresh_prices(self, user_id: int) -> dict[str, Any]:
+        """Refresh market estimates without downloading the Basalam catalog again."""
+        lock = self._lock(user_id)
+        if lock.locked():
+            return {"ok": True, "status": "already_running"}
+        async with lock:
+            account = rows("SELECT user_id FROM accounts WHERE user_id=?", (user_id,))
+            if not account:
+                return {"ok": False, "status": "account_not_found"}
+            products = rows(
+                """SELECT product_id,title,stock FROM merchant_products
+                WHERE user_id=? ORDER BY stock > 0 DESC, stock DESC""",
+                (user_id,),
+            )[: max(1, settings.merchant_product_limit)]
+            with connection() as db:
+                db.execute(
+                    "UPDATE accounts SET sync_status='running',sync_error=NULL WHERE user_id=?",
+                    (user_id,),
+                )
+            try:
+                semaphore = asyncio.Semaphore(3)
+
+                async def estimate(product: dict[str, Any]) -> bool:
+                    async with semaphore:
+                        try:
+                            crawl = await market_crawler.search(product["title"])
+                            comparable_listings = exclude_marketplace_product(
+                                crawl["listings"],
+                                "basalam",
+                                product["product_id"],
+                            )
+                            analysis = analyze_listings(comparable_listings)
+                            with connection() as db:
+                                db.execute(
+                                    """UPDATE merchant_products SET
+                                    market_low=?,market_suggested=?,market_high=?,
+                                    confidence=?,sample_size=?,source_counts=?,
+                                    estimate_error=NULL,estimated_at=?
+                                    WHERE user_id=? AND product_id=?""",
+                                    (
+                                        analysis["range"]["low"],
+                                        analysis["recommended"],
+                                        analysis["range"]["high"],
+                                        analysis["confidence"],
+                                        analysis["sample_size"],
+                                        json.dumps(analysis["source_counts"]),
+                                        now_iso(),
+                                        user_id,
+                                        product["product_id"],
+                                    ),
+                                )
+                            return True
+                        except Exception as exc:
+                            logger.info(
+                                "Price refresh unavailable for product %s: %s",
+                                product["product_id"],
+                                exc,
+                            )
+                            with connection() as db:
+                                db.execute(
+                                    """UPDATE merchant_products SET estimate_error=?,
+                                    estimated_at=? WHERE user_id=? AND product_id=?""",
+                                    (
+                                        "داده مشابه کافی پیدا نشد",
+                                        now_iso(),
+                                        user_id,
+                                        product["product_id"],
+                                    ),
+                                )
+                            return False
+
+                estimated = await asyncio.gather(*(estimate(item) for item in products))
+                with connection() as db:
+                    db.execute(
+                        """UPDATE accounts SET last_synced_at=?,sync_status='idle',
+                        sync_error=NULL WHERE user_id=?""",
+                        (now_iso(), user_id),
+                    )
+                return {
+                    "ok": True,
+                    "status": "complete",
+                    "products": len(products),
+                    "estimated": sum(estimated),
+                }
+            except Exception as exc:
+                logger.exception("Merchant price refresh failed for user %s", user_id)
+                with connection() as db:
+                    db.execute(
+                        """UPDATE accounts SET sync_status='failed',sync_error=?
+                        WHERE user_id=?""",
+                        ("به‌روزرسانی قیمت‌های بازار ناموفق بود", user_id),
+                    )
+                return {"ok": False, "status": "failed", "message": str(exc)}
+
     async def sync_due_users(self) -> list[dict[str, Any]]:
         accounts = rows("SELECT user_id,last_synced_at,sync_status FROM accounts")
         cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.merchant_sync_hours)
