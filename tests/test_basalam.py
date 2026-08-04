@@ -29,6 +29,21 @@ def test_authorization_url_contains_only_configured_read_scopes(monkeypatch):
     assert query["state"] == ["secure-state"]
 
 
+def test_authorization_url_adds_sales_history_scope_for_stale_deployment(monkeypatch):
+    monkeypatch.setattr(
+        "app.basalam.settings",
+        SimpleNamespace(
+            client_id="client-id",
+            scopes="customer.profile.read vendor.profile.read vendor.product.read",
+            redirect_uri="https://qeimatyar.ir/auth/basalam/callback",
+        ),
+    )
+    query = parse_qs(urlparse(BasalamClient().authorization_url("renew-state")).query)
+    assert query["scope"] == [
+        "customer.profile.read vendor.profile.read vendor.product.read vendor.parcel.read"
+    ]
+
+
 def test_authorization_url_rejects_write_scope(monkeypatch):
     monkeypatch.setattr(
         "app.basalam.settings",

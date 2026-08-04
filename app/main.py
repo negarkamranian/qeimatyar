@@ -1291,7 +1291,7 @@ async def market_analysis_extended(payload: MarketSearchInput, request: Request)
 
 
 @app.get("/auth/basalam")
-def connect_basalam() -> RedirectResponse:
+def connect_basalam(renew: str | None = None) -> RedirectResponse:
     if not settings.client_id or not settings.client_secret:
         raise HTTPException(503, "Basalam OAuth credentials are not configured.")
     state = secrets.token_urlsafe(32)
@@ -1307,11 +1307,12 @@ def connect_basalam() -> RedirectResponse:
         )
         raise HTTPException(503, str(exc)) from exc
     logger.info(
-        "oauth_authorization_started trace_id=%s redirect_uri=%s scopes=%s "
+        "oauth_authorization_started trace_id=%s redirect_uri=%s scopes=%s renewal=%s "
         "state_fingerprint=%s elapsed_ms=%s",
         trace_id,
         settings.redirect_uri,
-        settings.scopes.split(),
+        basalam.requested_scopes(),
+        renew == "analytics",
         _fingerprint(state),
         round((time.perf_counter() - started) * 1000),
     )

@@ -153,10 +153,21 @@ def test_premium_analytics_are_redacted_until_subscription_is_active():
     _insert_accounts_and_products()
     with connection() as db:
         db.execute(
-            """UPDATE merchant_products SET competitor_snapshot=?
+            """UPDATE merchant_products SET competitor_snapshot=?,
+            category_title=?,status_title=?,view_count=?,sales_count=?,
+            review_count=?,rating=?,sku=?,preparation_day=?,net_weight=?
             WHERE user_id=? AND product_id=?""",
             (
                 '[{"source":"torob","title":"رقیب","price":600000,"url":"https://torob.com/x"}]',
+                "نوشیدنی",
+                "منتشر شده",
+                125,
+                17,
+                4,
+                4.6,
+                "TEST-7001",
+                2,
+                350,
                 USER_ID,
                 7001,
             ),
@@ -176,6 +187,10 @@ def test_premium_analytics_are_redacted_until_subscription_is_active():
             assert free["premium"]["teaser"]["has_sales_history"] is True
             assert free["products"][0]["premium_analytics"] is None
             assert "competitor_snapshot" not in free["products"][0]
+            assert free["products"][0]["category_title"] == "نوشیدنی"
+            assert free["products"][0]["view_count"] == 125
+            assert free["products"][0]["sales_count"] == 17
+            assert free["products"][0]["rating"] == 4.6
 
             with connection() as db:
                 db.execute(

@@ -9,6 +9,7 @@ const state = {
   marketplace: "basalam",
   premium: null,
   premiumPrompted: false,
+  expandedProducts: new Set(),
 };
 const toman = value => new Intl.NumberFormat("fa-IR").format(value || 0);
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
@@ -25,7 +26,14 @@ function safeImage(value) {
   } catch { return ""; }
 }
 function toast(message, options = {}) {
-  const node = document.querySelector("#toast");
+  let node = document.querySelector("#toast");
+  if (!node) {
+    node = document.createElement("div");
+    node.id = "toast";
+    node.setAttribute("role", "status");
+    node.setAttribute("aria-live", "polite");
+    document.body.appendChild(node);
+  }
   const title = options.title || "اعلان";
   const kind = options.kind || "info";
   node.innerHTML = `
@@ -105,7 +113,21 @@ function maybeShowNotificationToast(nextNotifications, unreadCount) {
 
 function openPremiumDialog() {
   const dialog = document.querySelector("#premium-dialog");
-  if (dialog && !dialog.open) dialog.showModal();
+  if (!dialog || dialog.open) return;
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute("open", "");
+    dialog.classList.add("dialog-fallback-open");
+  }
+}
+
+function closePremiumDialog() {
+  const dialog = document.querySelector("#premium-dialog");
+  if (!dialog) return;
+  if (typeof dialog.close === "function" && dialog.open) dialog.close();
+  dialog.removeAttribute("open");
+  dialog.classList.remove("dialog-fallback-open");
 }
 
 function renderPremium(premium, account = {}) {
@@ -132,7 +154,7 @@ function renderPremium(premium, account = {}) {
     : "با تمدید دسترسی باسلام، فروش تاریخی هم به این تحلیل اضافه می‌شود.";
   const consentLink = account.analytics_status === "needs_consent"
     || String(account.analytics_error || "").includes("دسترسی")
-    ? `<a class="premium-consent-link" href="/auth/basalam">تمدید دسترسی خواندنی باسلام</a>`
+    ? `<a class="premium-consent-link" data-basalam-renew href="/auth/basalam?renew=analytics">تمدید دسترسی خواندنی باسلام</a>`
     : "";
   node.className = "premium-insights premium-lock";
   node.innerHTML = `
@@ -147,10 +169,6 @@ function renderPremium(premium, account = {}) {
     <div class="premium-lock-overlay">
       <div class="premium-lock-copy"><strong>${escapeHtml(premium.teaser.title)}</strong><p>${escapeHtml(readyCopy)}</p><button class="premium-unlock" type="button">دیدن تحلیل و قیمت رقبا</button>${consentLink}</div>
     </div>`;
-  node.querySelector(".premium-unlock").addEventListener("click", () => {
-    recordButtonClick("premium_teaser_open");
-    openPremiumDialog();
-  });
   if (!state.premiumPrompted) {
     state.premiumPrompted = true;
     let alreadySeen = false;
@@ -173,7 +191,60 @@ async function loadNotifications(options = {}) {
   state.notifications = nextNotifications;
   renderNotifications(data.unread_count);
 }
-function productRow(product) {
+const sourceLabel = source => ({
+  torob: "ترب", digikala: "دیجی‌کالا", basalam: "باسلام",
+})[source] || source;
+
+function productFacts(product) {
+  const facts = [
+    ["دسته‌بندی", product.category_title],
+    ["وضعیت باسلام", product.status_title],
+    ["بازدید محصول", product.view_count ? fa(product.view_count) : null],
+    ["فروش ثبت‌شده باسلام", product.sales_count ? `${fa(product.sales_count)} واحد` : null],
+    ["امتیاز خریداران", product.rating ? `${fa(product.rating)} از ۵` : null],
+    ["تعداد دیدگاه", product.review_count ? fa(product.review_count) : null],
+    ["شناسه فروشنده (SKU)", product.sku],
+    ["زمان آماده‌سازی", product.preparation_day ? `${fa(product.preparation_day)} روز` : null],
+    ["وزن خالص", product.net_weight ? `${fa(product.net_weight)} گرم` : null],
+    ["وزن بسته‌بندی", product.packaged_weight ? `${fa(product.packaged_weight)} گرم` : null],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+  if (!facts.length) {
+    return `<div class="product-details-empty"><strong>اطلاعات تکمیلی هنوز دریافت نشده است.</strong><span>«دریافت دوباره محصولات» را بزنید تا بازدید، فروش، دسته‌بندی و امتیاز محصول از باسلام خوانده شود.</span></div>`;
+  }
+  return `<div class="product-facts">${facts.map(([label, value]) => `
+    <div class="product-fact"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>
+  `).join("")}</div>`;
+}
+
+function competitorDetails(product) {
+  const sourceCounts = Object.entries(product.source_counts || {}).filter(([, count]) => count > 0);
+  const sources = sourceCounts.length
+    ? sourceCounts.map(([source, count]) => `<span>${escapeHtml(sourceLabel(source))}: ${fa(count)}</span>`).join("")
+    : `<span>هنوز نمونه معتبری ذخیره نشده</span>`;
+  const analytics = product.premium_analytics;
+  if (!analytics) {
+    return `<div class="product-market-details">
+      <div class="market-detail-head"><div><small>پوشش تحلیل بازار</small><strong>${fa(product.sample_size || 0)} رقیب معتبر · اطمینان ${fa(product.confidence || 0)}٪</strong></div><div class="source-chips">${sources}</div></div>
+      <div class="inline-premium-lock"><span aria-hidden="true">◇</span><div><strong>قیمت و تاریخچه رقبا آمادهٔ باز شدن است</strong><small>با اشتراک حرفه‌ای، قیمت، لینک فروشنده و اثر تاریخی قیمت‌گذاری را همین‌جا می‌بینید.</small></div><button class="premium-unlock" type="button">پیش‌نمایش تحلیل حرفه‌ای</button></div>
+    </div>`;
+  }
+  const competitors = (analytics.competitors || []).slice(0, 8);
+  const competitorRows = competitors.length
+    ? competitors.map(item => {
+        const href = safeImage(item.url);
+        const content = `<span>${escapeHtml(sourceLabel(item.source))}</span><strong>${toman(item.price)} تومان</strong><small>${escapeHtml(item.title)}</small>`;
+        return href
+          ? `<a class="competitor-item" href="${href}" target="_blank" rel="noopener noreferrer">${content}</a>`
+          : `<div class="competitor-item">${content}</div>`;
+      }).join("")
+    : `<div class="product-details-empty"><span>در همگام‌سازی بعدی، رقبای معتبر اینجا نمایش داده می‌شوند.</span></div>`;
+  return `<div class="product-market-details">
+    <div class="market-detail-head"><div><small>فروش ردیابی‌شده در ۱۸۰ روز</small><strong>${fa(analytics.tracked_sales_180d || 0)} واحد</strong></div><div><small>فرصت درآمدی سناریویی</small><strong>${toman(analytics.estimated_revenue_opportunity_180d || 0)} تومان</strong></div><div class="source-chips">${sources}</div></div>
+    <div class="competitor-list">${competitorRows}</div>
+  </div>`;
+}
+
+function productCard(product) {
   const image = safeImage(product.image_url);
   const imageNode = image
     ? `<img class="product-image" src="${image}" alt="" loading="lazy" referrerpolicy="no-referrer">`
@@ -186,27 +257,49 @@ function productRow(product) {
   const premiumOpportunity = product.premium_analytics?.estimated_revenue_opportunity_180d
     ? `<span class="opportunity-badge">فرصت سناریویی: ${toman(product.premium_analytics.estimated_revenue_opportunity_180d)} تومان</span>`
     : "";
-  return `<article class="product-row" data-title="${escapeHtml(product.title.toLowerCase())}" data-analysis-url="${analysisUrl}">
-    <a class="product-identity" href="${analysisUrl}">${imageNode}<span>
+  const expanded = state.expandedProducts.has(product.product_id);
+  return `<article class="product-card" data-title="${escapeHtml(product.title.toLowerCase())}">
+    <div class="product-row">
+    <button class="product-identity" type="button" data-product-toggle="${product.product_id}" aria-expanded="${expanded}">${imageNode}<span>
       <strong title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</strong>
-      <small>موجودی ${fa(product.stock)} · مشاهده تحلیل بازار</small>
-    </span></a>
+      <small>موجودی ${fa(product.stock)}${product.category_title ? ` · ${escapeHtml(product.category_title)}` : ""}</small>
+    </span></button>
     <div class="price-block"><small>قیمت فعلی</small><strong>${toman(product.current_price)} تومان</strong></div>
     <div class="range-block"><small>بازه پیشنهادی</small>${range}${premiumOpportunity}</div>
     <div class="product-actions">
+      <button class="details-toggle" type="button" data-product-toggle="${product.product_id}" aria-expanded="${expanded}">${expanded ? "بستن جزئیات" : "جزئیات محصول"}</button>
       <a class="analysis-link" href="${analysisUrl}" onclick="recordButtonClick('merchant_analysis', ${product.product_id})">تحلیل بازار</a>
       ${product.market_suggested && state.marketplace === "basalam"
         ? `<button class="set-price-btn" onclick="setPriceInBasalam(${product.product_id}, ${product.market_suggested || 0})">تنظیم قیمت در باسلام به ${toman(product.market_suggested || 0)} تومان</button>`
         : ""}
     </div>
+    </div>
+    <section class="product-details" id="product-details-${product.product_id}" ${expanded ? "" : "hidden"}>
+      <div class="product-details-title"><div><small>داده‌های تکمیلی محصول</small><strong>${escapeHtml(product.title)}</strong></div>${product.basalam_url ? `<a href="${escapeHtml(product.basalam_url)}" target="_blank" rel="noopener noreferrer">صفحه محصول در باسلام ↗</a>` : ""}</div>
+      ${productFacts(product)}
+      ${competitorDetails(product)}
+    </section>
   </article>`;
 }
 function renderProducts() {
   const query = document.querySelector("#product-filter").value.trim().toLowerCase();
   const products = state.products.filter(product => product.title.toLowerCase().includes(query));
   document.querySelector("#products-list").innerHTML = products.length
-    ? products.map(productRow).join("")
+    ? products.map(productCard).join("")
     : `<div class="empty-state">${state.products.length ? "محصولی با این نام نیست." : "هنوز محصولی دریافت نشده است."}</div>`;
+}
+
+function toggleProductDetails(productId, forceOpen = null) {
+  const numericId = Number(productId);
+  const shouldOpen = forceOpen === null ? !state.expandedProducts.has(numericId) : forceOpen;
+  if (shouldOpen) state.expandedProducts.add(numericId);
+  else state.expandedProducts.delete(numericId);
+  renderProducts();
+  if (shouldOpen) {
+    window.setTimeout(() => {
+      document.querySelector(`#product-details-${numericId}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 0);
+  }
 }
 function setPriceInBasalam(productId, price) {
   recordButtonClick("set_price_basalam_merchant", productId);
@@ -216,6 +309,9 @@ function setPriceInBasalam(productId, price) {
 async function loadDashboard() {
   const data = await api("/api/merchant/dashboard");
   state.products = data.products;
+  if (state.products.length === 1 && state.expandedProducts.size === 0) {
+    state.expandedProducts.add(state.products[0].product_id);
+  }
   state.marketplace = data.account.marketplace || "basalam";
   renderPremium(data.premium, data.account);
   state.status = data.account.sync_status;
@@ -264,20 +360,38 @@ document.querySelector("#sync-products-button").addEventListener("click", async 
 });
 document.querySelector("#product-filter").addEventListener("input", renderProducts);
 document.querySelectorAll("[data-close-premium]").forEach(button => {
-  button.addEventListener("click", () => document.querySelector("#premium-dialog").close());
+  button.addEventListener("click", closePremiumDialog);
 });
 document.querySelector("#premium-dialog").addEventListener("click", event => {
-  if (event.target === event.currentTarget) event.currentTarget.close();
+  if (event.target === event.currentTarget) closePremiumDialog();
 });
 document.querySelector("#premium-interest-button").addEventListener("click", () => {
-  recordButtonClick("premium_purchase_intent");
-  document.querySelector("#premium-dialog").close();
-  toast("برای تکمیل خرید، اتصال درگاه اشتراک باید برای سرویس فعال شود.", { title: "اشتراک حرفه‌ای" });
+  recordButtonClick("premium_product_preview");
+  closePremiumDialog();
+  const firstProduct = state.products[0];
+  if (firstProduct) {
+    toggleProductDetails(firstProduct.product_id, true);
+  } else {
+    toast("ابتدا محصولات غرفه را دوباره دریافت کنید.", { title: "تحلیل محصول" });
+  }
 });
 document.addEventListener("click", event => {
-  const row = event.target.closest(".product-row[data-analysis-url]");
-  if (row && !event.target.closest("a, button")) {
-    window.location.href = row.dataset.analysisUrl;
+  const premiumButton = event.target.closest(".premium-unlock");
+  if (premiumButton) {
+    recordButtonClick("premium_teaser_open");
+    openPremiumDialog();
+    return;
+  }
+  const detailsButton = event.target.closest("[data-product-toggle]");
+  if (detailsButton) {
+    toggleProductDetails(detailsButton.dataset.productToggle);
+    return;
+  }
+  const renewLink = event.target.closest("[data-basalam-renew]");
+  if (renewLink) {
+    recordButtonClick("basalam_analytics_reconsent");
+    renewLink.textContent = "در حال انتقال به باسلام…";
+    renewLink.setAttribute("aria-busy", "true");
   }
 });
 function startNotificationPolling() {

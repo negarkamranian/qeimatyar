@@ -23,6 +23,7 @@ REQUIRED_OAUTH_SCOPES = {
     "vendor.profile.read",
     "vendor.product.read",
 }
+ANALYTICS_OAUTH_SCOPES = {"vendor.parcel.read"}
 
 
 class BasalamError(RuntimeError):
@@ -55,8 +56,15 @@ class BasalamClient:
     api_base = "https://openapi.basalam.com/v1"
     auth_base = "https://auth.basalam.com"
 
-    def authorization_url(self, state: str) -> str:
-        scopes = settings.scopes.split()
+    def requested_scopes(self) -> list[str]:
+        """Return the least-privilege scopes required by the current product.
+
+        Analytics scopes are added in code so an older deployment environment
+        cannot silently issue another token that still lacks sales-history
+        consent.
+        """
+        configured = settings.scopes.split()
+        scopes = list(dict.fromkeys([*configured, *sorted(ANALYTICS_OAUTH_SCOPES)]))
         unsafe_scopes = [scope for scope in scopes if not scope.endswith(".read")]
         if unsafe_scopes:
             raise ValueError(
@@ -69,6 +77,10 @@ class BasalamClient:
                 "Basalam OAuth is missing required scopes: "
                 + ", ".join(sorted(missing_scopes))
             )
+        return scopes
+
+    def authorization_url(self, state: str) -> str:
+        scopes = self.requested_scopes()
         query = urlencode(
             {
                 "client_id": settings.client_id,
