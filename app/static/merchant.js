@@ -6,6 +6,7 @@ const state = {
   notificationPollTimer: null,
   notificationLoaded: false,
   toastTimer: null,
+  marketplace: "basalam",
 };
 const toman = value => new Intl.NumberFormat("fa-IR").format(value || 0);
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
@@ -130,7 +131,7 @@ function productRow(product) {
     <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
     <div class="product-actions">
       <a class="analysis-link" href="${analysisUrl}" onclick="recordButtonClick('merchant_analysis', ${product.product_id})">تحلیل بازار</a>
-      ${product.market_suggested
+      ${product.market_suggested && state.marketplace === "basalam"
         ? `<button class="set-price-btn" onclick="setPriceInBasalam(${product.product_id}, ${product.market_suggested || 0})">تنظیم قیمت در باسلام به ${toman(product.market_suggested || 0)} تومان</button>`
         : ""}
     </div>
@@ -151,6 +152,7 @@ function setPriceInBasalam(productId, price) {
 async function loadDashboard() {
   const data = await api("/api/merchant/dashboard");
   state.products = data.products;
+  state.marketplace = data.account.marketplace || "basalam";
   state.status = data.account.sync_status;
   const running = ["running", "queued"].includes(state.status);
   document.querySelector("#sync-state").hidden = !running;

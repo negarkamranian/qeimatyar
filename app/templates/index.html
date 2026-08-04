@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20260804-8">
+  <link rel="stylesheet" href="/static/app.css?v=20260804-9">
 </head>
 <body>
   <header class="site-header">
@@ -166,6 +166,14 @@
             <span></span>به‌روزرسانی قیمت در باسلام
           </button>
         </div>
+        <label class="foreign-pricing-toggle" for="include-foreign-prices">
+          <span>
+            <strong>لحاظ قیمت بازارهای خارجی در پیشنهاد</strong>
+            <small>ترندیول ترکیه و نون امارات · پیش‌فرض خاموش</small>
+          </span>
+          <input id="include-foreign-prices" type="checkbox" role="switch">
+          <i aria-hidden="true"></i>
+        </label>
         <div id="price-risk" class="price-risk neutral" role="status" aria-live="polite">
           <strong id="risk-title">قیمت در محدوده‌ی پیشنهادی</strong>
           <p id="risk-copy">در این محدوده، اثر کشش قیمت کم است و پیشنهاد بازار منطقی به‌نظر می‌رسد.</p>
@@ -215,14 +223,24 @@
       <section class="matches">
         <div class="section-head">
           <div>
-            <h2>محصولات مشابه پیدا شده</h2>
+            <h2>نتایج بازار ایران</h2>
             <p id="source-summary"></p>
           </div>
-          <div>
-            <button id="toggle-listings" class="text-button">نمایش همه</button>
-          </div>
+          <button class="text-button toggle-listings" data-listing-target="internal-listings">نمایش همه</button>
         </div>
-        <div id="listings" class="listing-grid"></div>
+        <div id="internal-listings" class="listing-grid"></div>
+
+        <div id="foreign-results" class="foreign-results" hidden>
+          <div class="section-head foreign-section-head">
+            <div>
+              <span class="foreign-market-badge">بازار خارجی</span>
+              <h2>ترکیه و امارات</h2>
+              <p>قیمت‌ها به تومان تبدیل شده‌اند و فقط با روشن‌کردن گزینه بالا در پیشنهاد اثر می‌گذارند.</p>
+            </div>
+            <button class="text-button toggle-listings" data-listing-target="foreign-listings">نمایش همه</button>
+          </div>
+          <div id="foreign-listings" class="listing-grid foreign-listing-grid"></div>
+        </div>
       </section>
 
       <p class="disclaimer">
@@ -244,6 +262,6 @@
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260804-8" defer></script>
+  <script src="/static/app.js?v=20260804-9" defer></script>
 </body>
 </html>

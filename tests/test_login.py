@@ -4,7 +4,7 @@ from app.config import settings
 from app.main import app
 
 
-def test_seller_login_shows_basalam_and_official_digikala_panel(monkeypatch):
+def test_seller_login_shows_basalam_and_digikala_connection(monkeypatch):
     monkeypatch.setattr(settings, "client_id", "")
     monkeypatch.setattr(settings, "client_secret", "")
 
@@ -14,8 +14,9 @@ def test_seller_login_shows_basalam_and_official_digikala_panel(monkeypatch):
     assert response.status_code == 200
     assert "باسلام" in response.text
     assert "دیجی‌کالا" in response.text
-    assert 'href="https://seller.digikala.com/pwa/"' in response.text
-    assert 'rel="noopener noreferrer"' in response.text
+    assert 'action="/auth/digikala/token"' in response.text
+    assert 'name="digikala_token"' in response.text
+    assert 'href="https://seller.digikala.com/pwa/"' not in response.text
 
 
 def test_basalam_connect_route_is_registered(monkeypatch):

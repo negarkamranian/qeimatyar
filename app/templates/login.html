@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/merchant.css?v=20260804-3">
+  <link rel="stylesheet" href="/static/merchant.css?v=20260804-4">
 </head>
 <body class="login-body">
   <header class="simple-header">
@@ -30,7 +30,7 @@
       <p class="eyebrow">ویژه فروشنده‌ها</p>
       <h1>ورود به پنل فروشندگی</h1>
       <p class="login-copy">
-        بازارگاهت را انتخاب کن. اتصال باسلام محصولات غرفه را در دقیقه نشان می‌دهد؛ ورود دیجی‌کالا شما را به پنل رسمی فروشندگان می‌برد.
+        بازارگاهت را متصل کن تا محصولات فروشگاه در دقیقه خوانده شوند و پیشنهادهای قیمت را ببینی.
       </p>
 
       <div class="seller-options">
@@ -54,15 +54,25 @@
           </span>
           <div class="seller-option-copy">
             <strong>دیجی‌کالا</strong>
-            <small>ورود مستقیم به مرکز رسمی فروشندگان</small>
+            <small>اتصال حساب و دریافت محصولات فروشنده</small>
           </div>
-          <a class="connect-button digikala-button" href="https://seller.digikala.com/pwa/" target="_blank" rel="noopener noreferrer">
-            ورود به پنل دیجی‌کالا
-          </a>
+          <form class="digikala-token-form" method="post" action="/auth/digikala/token">
+            <label for="digikala-token">Open API Token</label>
+            <input id="digikala-token" name="digikala_token" type="password" minlength="20" maxlength="5000" required autocomplete="off" placeholder="توکن پنل فروشندگان را وارد کنید">
+            <button class="connect-button digikala-button" type="submit">اتصال و دریافت محصولات</button>
+          </form>
+          {% if digikala_error %}
+          <p class="token-error" role="alert">توکن تایید نشد. یک توکن فعال با دسترسی Profile و Variant وارد کنید.</p>
+          {% endif %}
+          <details class="token-help">
+            <summary>توکن را از کجا بگیرم؟</summary>
+            <p>در پنل فروشندگان، بخش «سرویس‌های فروشنده» ← «Self Token» یک توکن با دسترسی خواندن Profile و Variant بسازید.</p>
+            <a href="https://seller.digikala.com/pwa/seller-services/self-token" target="_blank" rel="noopener noreferrer">ساخت توکن در پنل دیجی‌کالا</a>
+          </details>
         </article>
       </div>
 
-      <small class="privacy-note">دسترسی باسلام را هر زمان می‌توانید لغو کنید. اطلاعات ورود دیجی‌کالا فقط در وب‌سایت رسمی آن وارد می‌شود.</small>
+      <small class="privacy-note">توکن‌ها رمزنگاری می‌شوند؛ رمز یا کد یک‌بارمصرف حساب دیجی‌کالا را در دقیقه وارد نکنید.</small>
     </section>
   </main>
 </body>

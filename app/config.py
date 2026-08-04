@@ -48,6 +48,7 @@ class Settings:
         self.aed_toman_rate: float | None = _positive_float("AED_TOMAN_RATE")
         self.merchant_product_limit: int = int(os.getenv("MERCHANT_PRODUCT_LIMIT", "50"))
         self.merchant_sync_hours: int = int(os.getenv("MERCHANT_SYNC_HOURS", "6"))
+        self.digikala_price_divisor: int = max(1, int(os.getenv("DIGIKALA_PRICE_DIVISOR", "10")))
         self.usdt_notification_enabled: bool = _bool("USDT_NOTIFICATION_ENABLED", True)
         self.usdt_notification_percent: float = float(os.getenv("USDT_NOTIFICATION_PERCENT", "1"))
         self.usdt_check_interval_minutes: int = int(os.getenv("USDT_CHECK_INTERVAL_MINUTES", "30"))

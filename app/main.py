@@ -26,6 +26,7 @@ from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token, fet
 from app.config import refresh_settings, save_admin_overrides, settings, _env_file_paths
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
+from app.digikala import DigikalaError, digikala
 from app.llm import (
     WebSearchResult,
     optimize_marketplace_queries,
@@ -34,6 +35,8 @@ from app.llm import (
     web_search_products,
 )
 from app.marketplaces import (
+    FOREIGN_MARKETPLACE_SOURCES,
+    INTERNAL_MARKETPLACE_SOURCES,
     MarketListing,
     analyze_listings,
     exclude_marketplace_product,
@@ -73,7 +76,7 @@ def _admin_session(request: Request | None) -> bool:
 
 def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
     users = rows(
-        """SELECT a.user_id, a.vendor_id, a.vendor_title, a.user_name, a.sync_status,
+        """SELECT a.user_id, a.vendor_id, a.vendor_title, a.user_name, a.marketplace, a.sync_status,
         a.last_synced_at, a.connected_at, a.sync_error, a.token_expires_at,
         COUNT(mp.product_id) AS product_count,
         GROUP_CONCAT(mp.title, ' | ') AS product_titles
@@ -86,7 +89,10 @@ def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
         user["is_active"] = user.get("sync_status") in {"running", "queued"}
         user["products_synced"] = user.get("product_count", 0) > 0
         user["product_titles"] = user.get("product_titles") or ""
-        user["token_expired"] = _is_token_expired(user.get("token_expires_at"))
+        user["token_expired"] = (
+            user.get("marketplace") != "digikala"
+            and _is_token_expired(user.get("token_expires_at"))
+        )
     return {
         "settings": settings,
         "admin_settings_file": settings.admin_settings_file,
@@ -511,6 +517,8 @@ class ComparableListingInput(BaseModel):
     image_url: str = Field(default="", max_length=2000)
     similarity: float = Field(default=0, ge=0, le=1)
     llm_similarity: float | None = Field(default=None, ge=0, le=1)
+    native_price: float | None = Field(default=None, gt=0)
+    native_currency: str = Field(default="", max_length=10)
 
 
 class ComparableRecalculationInput(BaseModel):
@@ -630,7 +638,10 @@ def login_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="login.html",
-        context={"oauth_ready": bool(settings.client_id and settings.client_secret)},
+        context={
+            "oauth_ready": bool(settings.client_id and settings.client_secret),
+            "digikala_error": request.query_params.get("digikala_error"),
+        },
     )
 
 
@@ -640,7 +651,7 @@ def merchant_page(request: Request):
     if not user_id:
         return RedirectResponse("/login")
     account = rows(
-        "SELECT vendor_title,user_name FROM accounts WHERE user_id=?",
+        "SELECT vendor_title,user_name,marketplace FROM accounts WHERE user_id=?",
         (user_id,),
     )
     if not account:
@@ -725,6 +736,15 @@ async def store_analysis(
                 llm_scores: dict[str, float] = {}
                 if payload.use_llm and settings.llm_similarity_enabled:
                     llm_scores = await score_product_similarity(search_query, listings, source_product)
+                listings = [
+                    item for item in listings
+                    if item.source in INTERNAL_MARKETPLACE_SOURCES
+                ]
+                llm_scores = {
+                    item.url: llm_scores[item.url]
+                    for item in listings
+                    if item.url in llm_scores
+                }
                 analysis = analyze_listings(listings, llm_scores)
                 return {
                     "product_id": item["product_id"] if product_id else 0,
@@ -794,6 +814,46 @@ def submit_feedback(
     return {"ok": True}
 
 
+def _display_listing_groups(
+    listings: list[MarketListing],
+    llm_scores: dict[str, float] | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    scores = llm_scores or {}
+    ordered = sorted(
+        listings,
+        key=lambda item: (-scores.get(item.url, item.similarity), item.price),
+    )
+    groups: dict[str, list[dict[str, Any]]] = {"internal": [], "foreign": []}
+    for item in ordered:
+        public = item.public_dict()
+        if item.url in scores:
+            public["llm_similarity"] = round(scores[item.url], 2)
+        group = "foreign" if item.source in FOREIGN_MARKETPLACE_SOURCES else "internal"
+        groups[group].append(public)
+    return groups
+
+
+def _market_analysis_variants(
+    listings: list[MarketListing],
+    llm_scores: dict[str, float] | None = None,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+    internal = [
+        item for item in listings if item.source in INTERNAL_MARKETPLACE_SOURCES
+    ]
+    internal_scores = {
+        url: score
+        for url, score in (llm_scores or {}).items()
+        if any(item.url == url for item in internal)
+    }
+    internal_analysis = analyze_listings(internal, internal_scores)
+    combined_analysis = analyze_listings(listings, llm_scores)
+    return (
+        internal_analysis,
+        {"internal": internal_analysis, "with_foreign": combined_analysis},
+        _display_listing_groups(listings, llm_scores),
+    )
+
+
 @app.post("/api/market/recalculate")
 def recalculate_comparables(payload: ComparableRecalculationInput) -> dict[str, Any]:
     """Rebuild the price analysis after a user removes an irrelevant comparable."""
@@ -805,6 +865,8 @@ def recalculate_comparables(payload: ComparableRecalculationInput) -> dict[str, 
             url=item.url,
             image_url=item.image_url,
             similarity=item.similarity,
+            native_price=item.native_price,
+            native_currency=item.native_currency,
         )
         for item in payload.listings
     ]
@@ -814,7 +876,12 @@ def recalculate_comparables(payload: ComparableRecalculationInput) -> dict[str, 
         if item.llm_similarity is not None
     }
     try:
-        return {"analysis": analyze_listings(listings, llm_scores)}
+        analysis, variants, groups = _market_analysis_variants(listings, llm_scores)
+        return {
+            "analysis": analysis,
+            "analysis_variants": variants,
+            "listing_groups": groups,
+        }
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -1005,14 +1072,17 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
     )
     merchant_product = None
     merchant_user_id = read_session(request.cookies.get(COOKIE_NAME))
+    merchant_marketplace = "basalam"
     if merchant_user_id and payload.exclude_basalam_product_id:
         merchant_rows = rows(
-            """SELECT product_id,title,current_price FROM merchant_products
-            WHERE user_id=? AND product_id=?""",
+            """SELECT mp.product_id,mp.title,mp.current_price,a.marketplace
+            FROM merchant_products mp JOIN accounts a ON a.user_id=mp.user_id
+            WHERE mp.user_id=? AND mp.product_id=?""",
             (merchant_user_id, payload.exclude_basalam_product_id),
         )
         if merchant_rows:
             merchant_product = merchant_rows[0]
+            merchant_marketplace = merchant_product.get("marketplace") or "basalam"
     source_product: dict[str, Any] | None = None
     search_query = query
     source_queries: dict[str, str] | None = None
@@ -1062,7 +1132,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         if excluded_product_id:
             listings = exclude_marketplace_product(
                 listings,
-                "basalam",
+                merchant_marketplace,
                 excluded_product_id,
             )
         llm_scores: dict[str, float] = {}
@@ -1073,7 +1143,10 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
                 listings,
                 source_product,
             )
-        analysis = analyze_listings(listings, llm_scores)
+        analysis, analysis_variants, listing_groups = _market_analysis_variants(
+            listings,
+            llm_scores,
+        )
     except ValueError as exc:
         raise HTTPException(
             422,
@@ -1106,6 +1179,8 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         "merchant_product": merchant_product,
         "source_product": source_product,
         "analysis": analysis,
+        "analysis_variants": analysis_variants,
+        "listing_groups": listing_groups,
         "sources": statuses,
         "raw_count": crawl["raw_count"],
         "search_queries": crawl.get("search_queries", {}),
@@ -1253,6 +1328,78 @@ def connect_basalam() -> RedirectResponse:
         "oauth_trace",
         trace_id,
         max_age=600,
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+    )
+    return response
+
+
+@app.post("/auth/digikala/token")
+async def connect_digikala_token(
+    background_tasks: BackgroundTasks,
+    digikala_token: Annotated[str, Form(min_length=20, max_length=5000)],
+) -> RedirectResponse:
+    token = digikala_token.strip()
+    try:
+        profile = await digikala.profile(token)
+        seller_id = int(profile["seller_id"])
+        if seller_id <= 0:
+            raise ValueError("invalid seller id")
+    except (DigikalaError, KeyError, TypeError, ValueError):
+        logger.warning("digikala_token_connection_rejected")
+        return RedirectResponse("/login?digikala_error=invalid_token", status_code=303)
+
+    # Digikala and Basalam may use the same positive numeric identifier. Keeping
+    # Digikala identities negative preserves the existing session/account schema.
+    user_id = -seller_id
+    seller_title = (
+        profile.get("seller_name")
+        or profile.get("secondary_business_name")
+        or f"فروشنده دیجی‌کالا {seller_id}"
+    )
+    user_name = " ".join(
+        part for part in (profile.get("first_name"), profile.get("last_name")) if part
+    ) or seller_title
+    with connection() as db:
+        db.execute(
+            """INSERT INTO accounts
+            (user_id,vendor_id,vendor_title,user_name,access_token,refresh_token,
+             token_expires_at,connected_at,sync_status,marketplace)
+            VALUES(?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(user_id) DO UPDATE SET
+              vendor_id=excluded.vendor_id,vendor_title=excluded.vendor_title,
+              user_name=excluded.user_name,access_token=excluded.access_token,
+              refresh_token=NULL,token_expires_at=NULL,
+              connected_at=excluded.connected_at,sync_status='queued',
+              sync_error=NULL,marketplace='digikala'""",
+            (
+                user_id,
+                seller_id,
+                seller_title,
+                user_name,
+                encrypt_token(token),
+                None,
+                None,
+                now_iso(),
+                "queued",
+                "digikala",
+            ),
+        )
+    create_merchant_notification(
+        user_id,
+        kind="store_connected",
+        title="فروشگاه دیجی‌کالا وصل شد",
+        body="دقیقه فهرست محصولات، قیمت و موجودی فروشگاه را دریافت می‌کند.",
+        target_url="/merchant",
+        metadata={"marketplace": "digikala", "seller_id": seller_id},
+    )
+    background_tasks.add_task(merchant_sync.sync_user, user_id)
+    response = RedirectResponse("/merchant", status_code=303)
+    response.set_cookie(
+        COOKIE_NAME,
+        create_session(user_id),
+        max_age=SESSION_SECONDS,
         httponly=True,
         secure=settings.app_env == "production",
         samesite="lax",
@@ -1456,7 +1603,7 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
     user_id = _merchant_user(request)
     account_rows = rows(
         """SELECT user_id,vendor_id,vendor_title,user_name,last_synced_at,
-        sync_status,sync_error FROM accounts WHERE user_id=?""",
+        sync_status,sync_error,marketplace FROM accounts WHERE user_id=?""",
         (user_id,),
     )
     if not account_rows:
@@ -1473,7 +1620,11 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
         product["effective_min"] = product["user_min"] or product["market_low"]
         product["effective_max"] = product["user_max"] or product["market_high"]
         product["customized"] = bool(product["user_min"] or product["user_max"])
-        product["basalam_url"] = f"https://basalam.com/p/{product['product_id']}"
+        product["basalam_url"] = (
+            f"https://basalam.com/p/{product['product_id']}"
+            if account.get("marketplace") == "basalam"
+            else None
+        )
         if product["market_suggested"]:
             ready += 1
     return {
@@ -1503,35 +1654,50 @@ async def merchant_analyze_product(
         raise HTTPException(404, "محصول پیدا نشد.")
     product = product_rows[0]
     product_id_val = product["product_id"]
+    account_rows = rows("SELECT marketplace FROM accounts WHERE user_id=?", (user_id,))
+    marketplace = account_rows[0].get("marketplace") if account_rows else "basalam"
     source_product: dict[str, Any] | None = None
     search_query = product["title"]
-    try:
-        source_product = await fetch_basalam_product(product_id_val)
-        if source_product and source_product.get("title"):
-            search_query = source_product["title"]
-            if settings.llm_similarity_enabled and settings.avalai_api_key:
-                optimized = await optimize_search_query(source_product)
-                if optimized:
-                    search_query = optimized
-    except Exception as exc:
-        logger.warning("fetch_basalam_product failed for %s: %s", product_id_val, exc)
+    if marketplace == "basalam":
+        try:
+            source_product = await fetch_basalam_product(product_id_val)
+            if source_product and source_product.get("title"):
+                search_query = source_product["title"]
+                if settings.llm_similarity_enabled and settings.avalai_api_key:
+                    optimized = await optimize_search_query(source_product)
+                    if optimized:
+                        search_query = optimized
+        except Exception as exc:
+            logger.warning("fetch_basalam_product failed for %s: %s", product_id_val, exc)
 
     crawl = await market_crawler.search(search_query)
     listings = exclude_marketplace_product(
         crawl["listings"],
-        "basalam",
+        marketplace or "basalam",
         product_id_val,
     )
     llm_scores: dict[str, float] = {}
     if settings.llm_similarity_enabled:
         llm_scores = await score_product_similarity(search_query, listings, source_product)
+    listings = [
+        item for item in listings if item.source in INTERNAL_MARKETPLACE_SOURCES
+    ]
+    llm_scores = {
+        item.url: llm_scores[item.url]
+        for item in listings
+        if item.url in llm_scores
+    }
     analysis = analyze_listings(listings, llm_scores)
     return {
         "product_id": product_id_val,
         "title": product["title"],
         "source_product": source_product,
         "analysis": analysis,
-        "basalam_edit_url": f"https://vendor.basalam.com/edit-product/{product_id_val}",
+        "basalam_edit_url": (
+            f"https://vendor.basalam.com/edit-product/{product_id_val}"
+            if marketplace == "basalam"
+            else None
+        ),
     }
 
 
@@ -1805,7 +1971,9 @@ async def apply_recommendation(product_id: int) -> dict[str, Any]:
         if band.suggested == product["price"]:
             return {"ok": True, "changed": False, "price": product["price"]}
         if not settings.demo_mode:
-            account = db.execute("SELECT access_token FROM accounts LIMIT 1").fetchone()
+            account = db.execute(
+                "SELECT access_token FROM accounts WHERE marketplace='basalam' LIMIT 1"
+            ).fetchone()
             if not account:
                 raise HTTPException(409, "Connect a Basalam booth first.")
             try:
@@ -1831,7 +1999,9 @@ async def sync_products() -> dict[str, Any]:
     if settings.demo_mode:
         return {"ok": True, "synced": len(rows("SELECT id FROM products")), "demo": True}
     with connection() as db:
-        account = db.execute("SELECT * FROM accounts LIMIT 1").fetchone()
+        account = db.execute(
+            "SELECT * FROM accounts WHERE marketplace='basalam' LIMIT 1"
+        ).fetchone()
         if not account:
             raise HTTPException(409, "Connect a Basalam booth first.")
         try:
@@ -1921,7 +2091,9 @@ async def scheduled_reprice(x_cron_secret: str = Header(default="")) -> dict[str
             # In live mode, changes still flow through the same reviewed adapter.
             if not settings.demo_mode:
                 with connection() as db:
-                    account = db.execute("SELECT access_token FROM accounts LIMIT 1").fetchone()
+                    account = db.execute(
+                        "SELECT access_token FROM accounts WHERE marketplace='basalam' LIMIT 1"
+                    ).fetchone()
                 if not account:
                     continue
                 await basalam.update_price(decrypt_token(account["access_token"]), item["id"], decision.new_price)

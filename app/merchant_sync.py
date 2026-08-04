@@ -9,7 +9,9 @@ from typing import Any
 from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
 from app.config import settings
 from app.db import connection, now_iso, rows
+from app.digikala import digikala
 from app.marketplaces import (
+    INTERNAL_MARKETPLACE_SOURCES,
     analyze_listings,
     exclude_marketplace_product,
     market_crawler,
@@ -43,6 +45,8 @@ class MerchantSyncService:
 
     async def _valid_token(self, account: dict[str, Any]) -> str:
         encrypted_access = account["access_token"]
+        if account.get("marketplace") == "digikala":
+            return decrypt_token(encrypted_access)
         expires_at = account.get("token_expires_at")
         should_refresh = False
         if expires_at:
@@ -73,6 +77,50 @@ class MerchantSyncService:
             )
         return access
 
+    async def _remote_products(
+        self,
+        account: dict[str, Any],
+        token: str,
+    ) -> list[dict[str, Any]]:
+        if account.get("marketplace") != "digikala":
+            return await basalam.products(token, account["vendor_id"])
+
+        variants = await digikala.variants(token)
+        products: dict[int, dict[str, Any]] = {}
+        for item in variants:
+            try:
+                product_id = int(item.get("product_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if product_id <= 0:
+                continue
+            price_rial = int(
+                item.get("price_sale")
+                or item.get("cash_selling_price")
+                or item.get("price_list")
+                or 0
+            )
+            price = round(price_rial / settings.digikala_price_divisor)
+            stock = int(item.get("marketplace_seller_stock") or 0) + int(
+                item.get("warehouse_stock") or 0
+            )
+            product = products.setdefault(
+                product_id,
+                {
+                    "id": product_id,
+                    "title": item.get("product_title") or item.get("title") or "محصول بدون نام",
+                    "price": price,
+                    "stock": 0,
+                    "image_url": item.get("image_src") or "",
+                },
+            )
+            product["stock"] += stock
+            if price > 0 and (not product["price"] or price < product["price"]):
+                product["price"] = price
+            if not product["image_url"] and item.get("image_src"):
+                product["image_url"] = item["image_src"]
+        return list(products.values())
+
     async def sync_user(self, user_id: int) -> dict[str, Any]:
         lock = self._lock(user_id)
         if lock.locked():
@@ -90,7 +138,7 @@ class MerchantSyncService:
             try:
                 token = await self._valid_token(account)
                 try:
-                    remote_products = await basalam.products(token, account["vendor_id"])
+                    remote_products = await self._remote_products(account, token)
                 except BasalamError as exc:
                     if exc.status_code != 401 or not account.get("refresh_token"):
                         raise
@@ -111,21 +159,24 @@ class MerchantSyncService:
                                 user_id,
                             ),
                         )
-                    remote_products = await basalam.products(token, account["vendor_id"])
+                    remote_products = await self._remote_products(account, token)
 
                 sync_time = now_iso()
                 normalized: list[dict[str, Any]] = []
                 with connection() as db:
                     for item in remote_products:
-                        product = {
-                            "id": int(item["id"]),
-                            "title": item.get("title") or item.get("name") or "محصول بدون نام",
-                            "price": int(
-                                item.get("price") or item.get("primary_price") or 0
-                            ),
-                            "stock": int(item.get("inventory") or item.get("stock") or 0),
-                            "image_url": _image_url(item.get("photo")),
-                        }
+                        if account.get("marketplace") == "digikala":
+                            product = item
+                        else:
+                            product = {
+                                "id": int(item["id"]),
+                                "title": item.get("title") or item.get("name") or "محصول بدون نام",
+                                "price": int(
+                                    item.get("price") or item.get("primary_price") or 0
+                                ),
+                                "stock": int(item.get("inventory") or item.get("stock") or 0),
+                                "image_url": _image_url(item.get("photo")),
+                            }
                         normalized.append(product)
                         db.execute(
                             """INSERT INTO merchant_products
@@ -166,9 +217,13 @@ class MerchantSyncService:
                             crawl = await market_crawler.search(product["title"])
                             comparable_listings = exclude_marketplace_product(
                                 crawl["listings"],
-                                "basalam",
+                                account.get("marketplace") or "basalam",
                                 product["id"],
                             )
+                            comparable_listings = [
+                                item for item in comparable_listings
+                                if item.source in INTERNAL_MARKETPLACE_SOURCES
+                            ]
                             analysis = analyze_listings(comparable_listings)
                             with connection() as db:
                                 db.execute(
@@ -224,11 +279,12 @@ class MerchantSyncService:
                 }
             except Exception as exc:
                 logger.exception("Merchant sync failed for user %s", user_id)
+                marketplace_title = "دیجی‌کالا" if account.get("marketplace") == "digikala" else "باسلام"
                 with connection() as db:
                     db.execute(
                         """UPDATE accounts SET sync_status='failed',sync_error=?
                         WHERE user_id=?""",
-                        ("همگام‌سازی با باسلام ناموفق بود", user_id),
+                        (f"همگام‌سازی با {marketplace_title} ناموفق بود", user_id),
                     )
                 return {"ok": False, "status": "failed", "message": str(exc)}
 
@@ -238,7 +294,10 @@ class MerchantSyncService:
         if lock.locked():
             return {"ok": True, "status": "already_running"}
         async with lock:
-            account = rows("SELECT user_id FROM accounts WHERE user_id=?", (user_id,))
+            account = rows(
+                "SELECT user_id,marketplace FROM accounts WHERE user_id=?",
+                (user_id,),
+            )
             if not account:
                 return {"ok": False, "status": "account_not_found"}
             products = rows(
@@ -260,9 +319,13 @@ class MerchantSyncService:
                             crawl = await market_crawler.search(product["title"])
                             comparable_listings = exclude_marketplace_product(
                                 crawl["listings"],
-                                "basalam",
+                                account[0].get("marketplace") or "basalam",
                                 product["product_id"],
                             )
+                            comparable_listings = [
+                                item for item in comparable_listings
+                                if item.source in INTERNAL_MARKETPLACE_SOURCES
+                            ]
                             analysis = analyze_listings(comparable_listings)
                             with connection() as db:
                                 db.execute(

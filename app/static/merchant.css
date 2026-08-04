@@ -72,6 +72,16 @@ button, input { font: inherit; }
 .seller-option .setup-hint { grid-column: 1 / -1; margin: -2px 0 0; text-align: center; }
 .digikala-button { background: #ef4056; }
 .digikala-button:hover { background: #d93349; }
+.digikala-token-form { grid-column: 1 / -1; display: grid; gap: 7px; margin-top: 5px; }
+.digikala-token-form label { color: var(--muted); font-size: 9px; font-weight: 700; }
+.digikala-token-form input { width: 100%; min-width: 0; padding: 11px; border: 1px solid var(--line); border-radius: 9px; direction: ltr; text-align: left; outline: none; font-size: 10px; }
+.digikala-token-form input:focus { border-color: #ef4056; box-shadow: 0 0 0 3px rgba(239,64,86,.1); }
+.digikala-token-form .connect-button { grid-column: auto; margin-top: 0; }
+.token-error { grid-column: 1 / -1; margin: 0; color: #b4233b; font-size: 9px; line-height: 1.8; }
+.token-help { grid-column: 1 / -1; color: var(--muted); font-size: 9px; }
+.token-help summary { cursor: pointer; color: #52605b; }
+.token-help p { margin: 7px 0; line-height: 1.8; }
+.token-help a { color: #c42d43; font-weight: 700; text-decoration: none; }
 
 .merchant-main { width: min(980px, calc(100% - 32px)); margin: 48px auto 90px; }
 .merchant-head { display: flex; justify-content: space-between; align-items: end; }

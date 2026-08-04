@@ -31,6 +31,9 @@ MARKETPLACE_SOURCES = (
     "noon_uae",
 )
 
+INTERNAL_MARKETPLACE_SOURCES = frozenset({"torob", "digikala", "basalam"})
+FOREIGN_MARKETPLACE_SOURCES = frozenset({"trendyol", "noon_uae"})
+
 _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _STOP_WORDS = {
     "از",

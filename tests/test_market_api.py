@@ -4,6 +4,17 @@ from app.main import app
 from app.marketplaces import MarketListing, SourceStatus, market_crawler
 
 
+def test_results_page_has_separate_market_groups_and_foreign_toggle_off_by_default():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'id="internal-listings"' in response.text
+    assert 'id="foreign-listings"' in response.text
+    assert 'id="include-foreign-prices"' in response.text
+    assert 'id="include-foreign-prices" type="checkbox" role="switch" checked' not in response.text
+
+
 def test_market_analysis_endpoint(monkeypatch):
     listings = [
         MarketListing("torob", "محصول نمونه", 450_000, "https://torob.com/a", similarity=1),
@@ -35,6 +46,65 @@ def test_market_analysis_endpoint(monkeypatch):
     assert body["analysis"]["sample_size"] == 4
     assert body["analysis"]["elasticity"]["elasticity"] >= 0.7
     assert len(body["sources"]) == 3
+
+
+def test_foreign_markets_are_separate_and_excluded_from_default_price(monkeypatch):
+    listings = [
+        MarketListing("torob", "محصول", 400_000, "https://torob.com/a", similarity=1),
+        MarketListing("digikala", "محصول", 500_000, "https://digikala.com/a", similarity=1),
+        MarketListing("basalam", "محصول", 600_000, "https://basalam.com/a", similarity=1),
+        MarketListing(
+            "trendyol",
+            "product",
+            1_500_000,
+            "https://trendyol.com/a",
+            similarity=1,
+            native_price=1_000,
+            native_currency="TRY",
+        ),
+        MarketListing(
+            "noon_uae",
+            "product",
+            1_700_000,
+            "https://noon.com/a",
+            similarity=1,
+            native_price=120,
+            native_currency="AED",
+        ),
+    ]
+
+    async def fake_search(query):
+        return {
+            "listings": listings,
+            "sources": [
+                SourceStatus("torob", True, 1),
+                SourceStatus("digikala", True, 1),
+                SourceStatus("basalam", True, 1),
+                SourceStatus("trendyol", True, 1),
+                SourceStatus("noon_uae", True, 1),
+            ],
+            "raw_count": 5,
+        }
+
+    monkeypatch.setattr(market_crawler, "search", fake_search)
+    with TestClient(app) as client:
+        response = client.post("/api/market/analyze", json={"product_name": "محصول"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["analysis"]["recommended"] == 500_000
+    assert body["analysis_variants"]["internal"]["recommended"] == 500_000
+    assert body["analysis_variants"]["with_foreign"]["recommended"] != 500_000
+    assert {item["source"] for item in body["listing_groups"]["internal"]} == {
+        "torob",
+        "digikala",
+        "basalam",
+    }
+    assert {item["source"] for item in body["listing_groups"]["foreign"]} == {
+        "trendyol",
+        "noon_uae",
+    }
+    assert body["listing_groups"]["foreign"][0]["native_currency"] in {"TRY", "AED"}
 
 
 def test_market_recalculation_uses_remaining_comparables():

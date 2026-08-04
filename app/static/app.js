@@ -17,6 +17,7 @@ let swipeReviewItems = [];
 const reviewedListingUrls = new Set();
 let comparableUpdatePending = false;
 let userRemovedComparableCount = 0;
+let includeForeignPricing = false;
 const pageParams = new URLSearchParams(window.location.search);
 let merchantContext = {
   active: pageParams.get("from") === "merchant",
@@ -164,6 +165,7 @@ async function analyze(productName) {
   productName = cleanMarketplaceInput(productName);
   reviewedListingUrls.clear();
   userRemovedComparableCount = 0;
+  includeForeignPricing = false;
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.set("q", productName);
   window.history.replaceState({}, "", nextUrl);
@@ -198,7 +200,10 @@ async function analyze(productName) {
 }
 
 function renderResult(data) {
-  const analysis = data.analysis;
+  const analysis = includeForeignPricing
+    ? (data.analysis_variants?.with_foreign || data.analysis)
+    : (data.analysis_variants?.internal || data.analysis);
+  data.analysis = analysis;
   currentAnalysis = data;
   document.querySelector("#result-title").textContent = data.query;
 
@@ -251,6 +256,7 @@ function renderResult(data) {
     `${toman(analysis.range.low)} تا ${toman(analysis.range.high)} تومان`;
   document.querySelector("#sample-size").textContent = `${fa(analysis.sample_size)} قیمت`;
   document.querySelector("#confidence").textContent = `${fa(analysis.confidence)}٪`;
+  document.querySelector("#include-foreign-prices").checked = includeForeignPricing;
 
   const slider = document.querySelector("#price-slider");
   const step = 1000;
@@ -275,16 +281,40 @@ function renderResult(data) {
   document.querySelector("#merchant-back").hidden = !merchantContext.active;
   updateSelectedPrice();
 
-  const counts = analysis.source_counts;
+  const internalAnalysis = data.analysis_variants?.internal || analysis;
+  const counts = internalAnalysis.source_counts;
   const parts = Object.entries(counts)
-    .filter(([, count]) => count > 0)
+    .filter(([source, count]) => count > 0 && !["trendyol", "noon_uae"].includes(source))
     .map(([source, count]) => `${sourceNames[source]} ${fa(count)}`);
   document.querySelector("#source-summary").textContent =
-    `${parts.join(" · ")} · ${fa(Number(analysis.excluded_count) + userRemovedComparableCount)} قیمت پرت یا نامرتبط حذف شد`;
+    `${parts.join(" · ")} · ${fa(Number(internalAnalysis.excluded_count) + userRemovedComparableCount)} قیمت پرت یا نامرتبط حذف شد`;
 
-  const listings = document.querySelector("#listings");
-  listings.classList.remove("expanded");
-  listings.innerHTML = analysis.listings.map((item, index) => {
+  const groups = data.listing_groups || {
+    internal: analysis.listings.filter(item => !["trendyol", "noon_uae"].includes(item.source)),
+    foreign: analysis.listings.filter(item => ["trendyol", "noon_uae"].includes(item.source)),
+  };
+  renderListingGroup("internal-listings", groups.internal || []);
+  renderListingGroup("foreign-listings", groups.foreign || []);
+  document.querySelector("#foreign-results").hidden = !(groups.foreign || []).length;
+  document.querySelectorAll(".toggle-listings").forEach(button => {
+    button.textContent = "نمایش همه";
+  });
+
+  setupFeedbackButtons();
+  setupSwipeReview();
+  setupUseRecommendedButton();
+  setupUpdateBasalamButton();
+  setupSliderButtons();
+}
+
+function nativePriceText(item) {
+  const value = Number(item.native_price);
+  if (!value || !item.native_currency) return "";
+  const formatted = new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 2 }).format(value);
+  return `<small class="native-price">${formatted} ${escapeHtml(item.native_currency)}</small>`;
+}
+
+function listingCardMarkup(item) {
     const href = safeUrl(item.url);
     const image = safeUrl(item.image_url);
     const imageNode = image
@@ -299,6 +329,7 @@ function renderResult(data) {
       <span class="listing-info" style="flex: 1;">
         <a class="listing-link" href="${href}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</a>
         <b>${toman(item.price)} تومان</b>
+        ${nativePriceText(item)}
         <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ ${simLabel}</small>
         <small>${escapeHtml(sourceNames[item.source] || item.source)}</small>
       </span>
@@ -306,14 +337,12 @@ function renderResult(data) {
         <span aria-hidden="true">×</span>
       </button>
     </article>`;
-  }).join("");
-  document.querySelector("#toggle-listings").textContent = "نمایش همه";
+}
 
-  setupFeedbackButtons();
-  setupSwipeReview();
-  setupUseRecommendedButton();
-  setupUpdateBasalamButton();
-  setupSliderButtons();
+function renderListingGroup(elementId, items) {
+  const grid = document.querySelector(`#${elementId}`);
+  grid.classList.remove("expanded");
+  grid.innerHTML = items.map(listingCardMarkup).join("");
 }
 
 function setupFeedbackButtons() {
@@ -455,13 +484,16 @@ function sendSimilarityFeedback(listing, rating) {
 
 async function removeComparable(url) {
   if (comparableUpdatePending) return false;
-  const listings = currentAnalysis?.analysis?.listings || [];
+  const groups = currentAnalysis?.listing_groups || {};
+  const listings = [...(groups.internal || []), ...(groups.foreign || [])];
   const normalizedTarget = normalizeUrl(url);
   const listing = listings.find(item => normalizeUrl(item.url) === normalizedTarget);
   if (!listing) return false;
-  if (listings.length <= 3) {
+  const internalListings = groups.internal || [];
+  const isInternal = !["trendyol", "noon_uae"].includes(listing.source);
+  if (listings.length <= 3 || (isInternal && internalListings.length <= 3)) {
     const progress = document.querySelector("#swipe-progress");
-    if (progress) progress.textContent = "برای تحلیل حداقل ۳ قیمت لازم است";
+    if (progress) progress.textContent = "برای تحلیل حداقل ۳ قیمت از بازار ایران لازم است";
     return false;
   }
 
@@ -479,6 +511,8 @@ async function removeComparable(url) {
     if (!response.ok) throw new Error(body.detail || "محاسبه دوباره انجام نشد.");
     userRemovedComparableCount += 1;
     currentAnalysis.analysis = body.analysis;
+    currentAnalysis.analysis_variants = body.analysis_variants;
+    currentAnalysis.listing_groups = body.listing_groups;
     renderResult(currentAnalysis);
     const progress = document.querySelector("#swipe-progress");
     if (progress) progress.textContent = "قیمت حذف و پیشنهاد به‌روز شد";
@@ -744,18 +778,22 @@ document.querySelector("#search-form").addEventListener("submit", event => {
   }
 });
 
-document.querySelector("#toggle-listings").addEventListener("click", event => {
-  const grid = document.querySelector("#listings");
+document.querySelectorAll(".toggle-listings").forEach(button => button.addEventListener("click", event => {
+  const grid = document.querySelector(`#${event.currentTarget.dataset.listingTarget}`);
   grid.classList.toggle("expanded");
   event.currentTarget.textContent = grid.classList.contains("expanded") ? "نمایش کمتر" : "نمایش همه";
-});
-document.querySelector("#listings").addEventListener("click", event => {
+}));
+document.querySelector(".matches").addEventListener("click", event => {
   const button = event.target.closest(".remove-listing-button");
   if (button) {
     event.preventDefault();
     event.stopPropagation();
     removeComparable(button.dataset.removeUrl);
   }
+});
+document.querySelector("#include-foreign-prices").addEventListener("change", event => {
+  includeForeignPricing = event.currentTarget.checked;
+  if (currentAnalysis) renderResult(currentAnalysis);
 });
 document.querySelector("#swipe-reject").addEventListener("click", () => completeSwipe(-1));
 document.querySelector("#swipe-accept").addEventListener("click", () => completeSwipe(1));
