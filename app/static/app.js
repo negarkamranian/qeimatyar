@@ -13,9 +13,9 @@ let merchantContext = {
   currentPrice: null,
   productId: Number(pageParams.get("product_id")) || null,
 };
-
 const toman = value => new Intl.NumberFormat("fa-IR").format(Math.round(value || 0));
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
+let useWebSearch = false;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -91,7 +91,38 @@ function applySliderMarkerLayout() {
   priceSlider.style.setProperty("--marker-rows", rows.count);
 }
 
-async function analyze(productName, userStates=null) {
+async function fetchSampleProducts() {
+  const container = document.querySelector("#sample-products");
+  if (!container) return;
+  try {
+    const response = await fetch("/api/sample-products");
+    if (!response.ok) return;
+    const body = await response.json();
+    const products = body.products || [];
+    container.innerHTML = '<span>یا روی یکی از محصولات نمونه بزنید:</span>';
+    products.forEach(product => {
+      const image = product.image_url
+        ? escapeHtml(product.image_url)
+        : "";
+      const imageNode = image
+        ? `<img class="sample-image" src="${image}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+        : `<span class="sample-image-placeholder">◇</span>`;
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "sample-product-card";
+      card.innerHTML = `${imageNode}<strong title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</strong>`;
+      card.addEventListener("click", () => {
+        document.querySelector("#product-name").value = product.url;
+        analyze(product.url);
+      });
+      container.appendChild(card);
+    });
+  } catch {
+    // best-effort: fall back to no sample cards
+  }
+}
+
+async function analyze(productName) {
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.set("q", productName);
   window.history.replaceState({}, "", nextUrl);
@@ -103,10 +134,8 @@ async function analyze(productName, userStates=null) {
     if (merchantContext.active && merchantContext.productId) {
       requestBody.exclude_basalam_product_id = merchantContext.productId;
     }
-    if (userStates) {
-      requestBody.listings_with_user_state = userStates;
-    }
-    const response = await fetch("/api/market/analyze", {
+    const endpoint = useWebSearch ? "/api/market/analyze-extended" : "/api/market/analyze";
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
@@ -130,9 +159,48 @@ async function analyze(productName, userStates=null) {
 
 function renderResult(data) {
   const analysis = data.analysis;
-  currentAnalysis = analysis;
+  currentAnalysis = data;
   document.querySelector("#result-title").textContent = data.query;
+
+  const queryDisplay = document.querySelector("#search-query-display");
+  if (data.resolved_from_url && data.query) {
+    queryDisplay.textContent = `جست‌وجو: ${data.query}`;
+    queryDisplay.hidden = false;
+  } else {
+    queryDisplay.hidden = true;
+  }
+
   document.querySelector("#recommended-price").textContent = toman(analysis.recommended);
+
+  const sourceProduct = data.source_product;
+  const setPriceBtn = document.querySelector("#set-price-basalam");
+  if (sourceProduct && sourceProduct.product_id) {
+    setPriceBtn.hidden = false;
+    setPriceBtn.onclick = () => {
+      recordButtonClick("set_price_basalam", sourceProduct.product_id);
+      window.open(
+        `https://basalam.com/vendor/products/${sourceProduct.product_id}`,
+        "_blank",
+        "noopener",
+      );
+    };
+  } else {
+    setPriceBtn.hidden = true;
+  }
+
+  const updateBtn = document.querySelector("#update-basalam-price");
+  if (sourceProduct && sourceProduct.title) {
+    updateBtn.hidden = false;
+    updateBtn.onclick = () => {
+      recordButtonClick("update_price_basalam", sourceProduct.product_id);
+      const url = sourceProduct.product_id
+        ? `https://basalam.com/vendor/products/${sourceProduct.product_id}`
+        : "https://basalam.com/vendor/products";
+      window.open(url, "_blank", "noopener");
+    };
+  } else {
+    updateBtn.hidden = true;
+  }
   const scale = analysis.scale || analysis.range;
   document.querySelector("#low-label").textContent = toman(analysis.positions.quick);
   document.querySelector("#high-label").textContent = toman(analysis.positions.patient);
@@ -173,24 +241,22 @@ function renderResult(data) {
 
   const listings = document.querySelector("#listings");
   listings.classList.remove("expanded");
-  listings.classList.remove("editing");
   listings.innerHTML = analysis.listings.map((item, index) => {
-    item.userState = item.userState || "default";
-
     const href = safeUrl(item.url);
     const image = safeUrl(item.image_url);
     const imageNode = image
       ? `<img class="listing-image" src="${image}" alt="" loading="lazy" referrerpolicy="no-referrer">`
       : `<span class="image-placeholder">◇</span>`;
-    const similarityPct = Math.round(Number(item.similarity) * 100);
+    const similarityPct = Math.round(Number(item.llm_similarity ?? item.similarity) * 100);
     const simClass = similarityPct >= 80 ? "high" : similarityPct >= 50 ? "mid" : "low";
-    const stateClass = item.userState !== "default" ? `state-${item.userState}` : "";
-    return `<a class="listing-card ${stateClass}" href="${href}" target="_blank" rel="noopener noreferrer" data-index="${index}" data-current-state="${item.userState}">
+    const simLabel = item.llm_similarity != null ? "امتیاز LLM" : "٪ شباهت";
+    const listingKey = encodeURIComponent(href);
+    return `<a class="listing-card" href="${href}" target="_blank" rel="noopener noreferrer" data-listing="${listingKey}">
       ${imageNode}
       <span class="listing-info" style="flex: 1;">
         <strong title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
         <b>${toman(item.price)} تومان</b>
-        <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ شباهت</small>
+        <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ ${simLabel}</small>
         <small>${escapeHtml(sourceNames[item.source] || item.source)}</small>
         
         <div class="listing-state-controls">
@@ -199,10 +265,145 @@ function renderResult(data) {
           <div class="listing-state-btn" data-state="dislike" title="نپسندیدن">✕</div>
         </div>
       </span>
+      <div class="listing-feedback" onclick="handleListingFeedback(event, ${index}, ${similarityPct})">
+        <button class="listing-feedback-button dislike" data-action="dislike" title="محصول مشابه نیست">👎</button>
+        <button class="listing-feedback-button like" data-action="like" title="محصول مشابه است">👍</button>
+      </div>
     </a>`;
   }).join("");
   document.querySelector("#toggle-listings").textContent = "نمایش همه";
-  document.querySelector("#edit-listings").textContent = "ویرایش";
+
+  setupFeedbackButtons();
+  setupUseRecommendedButton();
+  setupUpdateBasalamButton();
+  setupSliderButtons();
+}
+
+function setupFeedbackButtons() {
+  const likeBtn = document.querySelector("#like-recommendation");
+  const dislikeBtn = document.querySelector("#dislike-recommendation");
+  if (likeBtn) likeBtn.onclick = () => sendFeedback("recommendation", 1);
+  if (dislikeBtn) dislikeBtn.onclick = () => sendFeedback("recommendation", -1);
+}
+
+function setupUpdateBasalamButton() {
+  const btn = document.querySelector("#update-basalam-price");
+  if (!btn) return;
+  const sourceProduct = currentAnalysis?.source_product;
+  if (sourceProduct && sourceProduct.product_id) {
+    btn.hidden = false;
+    btn.innerHTML = '<span>💰</span>استفاده از این قیمت در غرفه';
+    btn.onclick = () => {
+      recordButtonClick("use_price_in_store", sourceProduct.product_id);
+      window.open(`https://basalam.com/vendor/products/${sourceProduct.product_id}`, "_blank", "noopener");
+    };
+  }
+}
+
+function setupUseRecommendedButton() {
+  const btn = document.querySelector("#use-recommended");
+  if (!btn) return;
+  btn.onclick = () => {
+    const slider = document.querySelector("#price-slider");
+    slider.value = Number(currentAnalysis?.analysis?.recommended || 0);
+    document.querySelector("#selected-price-label").textContent = merchantContext.active
+      ? "قیمت انتخابی شما"
+      : "قیمت انتخابی شما";
+    updateSelectedPrice();
+    recordButtonClick("use_recommended_price");
+  };
+}
+
+function setupSliderButtons() {
+  const optimalBtn = document.querySelector("#set-to-optimal");
+  const basalamBtn = document.querySelector("#update-in-basalam");
+  const sourceProduct = currentAnalysis?.source_product;
+
+  if (optimalBtn) {
+    optimalBtn.onclick = () => {
+      const slider = document.querySelector("#price-slider");
+      const recommended = Number(currentAnalysis?.analysis?.recommended || 0);
+      slider.value = recommended;
+      updateSelectedPrice();
+      recordButtonClick("set_to_optimal_price");
+    };
+  }
+
+  if (basalamBtn) {
+    if (sourceProduct && sourceProduct.product_id) {
+      basalamBtn.hidden = false;
+      basalamBtn.onclick = () => {
+        recordButtonClick("update_price_basalam", sourceProduct.product_id);
+        window.open(
+          `https://basalam.com/vendor/products/${sourceProduct.product_id}`,
+          "_blank",
+          "noopener",
+        );
+      };
+    } else {
+      basalamBtn.hidden = true;
+    }
+  }
+}
+
+async function sendFeedback(feedbackType, rating) {
+  try {
+    await fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        feedback_type: feedbackType,
+        target_url: window.location.href,
+        rating: rating,
+        product_name: currentAnalysis?.query || document.querySelector("#result-title")?.textContent || "",
+      }),
+    });
+  } catch {
+    // feedback tracking is best-effort
+  }
+}
+
+async function recordButtonClick(buttonName, productId = null) {
+  try {
+    const sourceProduct = currentAnalysis?.source_product;
+    await fetch("/api/metrics/button-click", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        button_name: buttonName,
+        product_id: productId,
+        store_id: sourceProduct?.store_id || currentAnalysis?.store_id || null,
+        product_url: sourceProduct?.product_url || currentAnalysis?.product_url || window.location.href || null,
+      }),
+    });
+  } catch {
+    // click tracking is best-effort
+  }
+}
+
+function handleListingFeedback(event, index, similarityPct) {
+  event.preventDefault();
+  event.stopPropagation();
+  const action = event.target.dataset.action;
+  if (!action) return;
+  const rating = action === "like" ? 1 : -1;
+  const listing = currentAnalysis?.analysis?.listings[index];
+  if (!listing) return;
+  fetch("/api/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      feedback_type: "similarity",
+      target_url: listing.url,
+      rating: rating,
+      product_name: currentAnalysis?.query || "",
+    }),
+  }).catch(() => {});
+
+  // visual feedback
+  const card = event.target.closest(".listing-card");
+  card.style.opacity = "0.5";
+  setTimeout(() => { card.style.opacity = ""; }, 1500);
 }
 
 function computeElasticity(value, recommended, low, high) {
@@ -237,6 +438,8 @@ function computeElasticity(value, recommended, low, high) {
   };
 }
 
+const TOLERANCE = 0.01;
+
 function updateSelectedPrice() {
   if (!currentAnalysis) return;
   const slider = document.querySelector("#price-slider");
@@ -266,7 +469,7 @@ function updateSelectedPrice() {
     document.querySelector("#signal-title").textContent = "قیمت منصفانه";
     document.querySelector("#signal-copy").textContent = "در مرکز قیمت‌های مشابه بازار قرار دارید.";
     slider.style.setProperty("--thumb", "var(--teal)");
-    selectedPriceEl.style.color = value === recommended ? "var(--green)" : "var(--ink)";
+    selectedPriceEl.style.color = Math.abs(value - recommended) < TOLERANCE ? "var(--green)" : "var(--ink)";
   } else {
     signal.classList.add("patient");
     document.querySelector("#signal-title").textContent = "فروش صبورانه";
@@ -279,7 +482,7 @@ function updateSelectedPrice() {
   const riskTitle = document.querySelector("#risk-title");
   const riskCopy = document.querySelector("#risk-copy");
   priceRisk.classList.remove("neutral", "good", "warning", "danger");
-  if (value === recommended) {
+  if (Math.abs(value - recommended) < TOLERANCE) {
     priceRisk.classList.add("good");
     riskTitle.textContent = "قیمت پیشنهادی بهینه";
     riskCopy.textContent = "شما دقیقاً روی قیمت پیشنهادی قیمت‌یار هستید. در این نقطه، تعادل مناسبی بین تقاضا و درآمد حفظ می‌شود.";
@@ -299,27 +502,11 @@ function updateSelectedPrice() {
   }
 }
 
-document.querySelector("#search-form").addEventListener("submit", event => {
-  event.preventDefault();
-  const input = document.querySelector("#product-name");
-  const productName = input.value.trim();
-  if (productName.length >= 2) analyze(productName);
-});
-
-document.querySelectorAll("[data-example]").forEach(button => {
-  button.addEventListener("click", () => {
-    document.querySelector("#product-name").value = button.dataset.example;
-    analyze(button.dataset.example);
-  });
+document.addEventListener("DOMContentLoaded", () => {
+  fetchSampleProducts();
 });
 
 document.querySelector("#price-slider").addEventListener("input", updateSelectedPrice);
-document.querySelector("#use-recommended").addEventListener("click", () => {
-  const slider = document.querySelector("#price-slider");
-  slider.value = Number(currentAnalysis.recommended);
-  document.querySelector("#selected-price-label").textContent = "قیمت انتخابی شما";
-  updateSelectedPrice();
-});
 document.querySelector("#new-search").addEventListener("click", () => {
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.delete("q");
@@ -337,6 +524,27 @@ document.querySelector("#retry-button").addEventListener("click", () => {
   showView("search");
   document.querySelector("#product-name").focus();
 });
+
+const searchText = document.querySelector("#product-name");
+
+document.querySelector("#search-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const productName = searchText.value.trim();
+  if (productName.length >= 2) {
+    analyze(productName);
+  }
+});
+
+document.querySelector("#toggle-web-search").addEventListener("click", () => {
+  useWebSearch = !useWebSearch;
+  const btn = document.querySelector("#toggle-web-search");
+  btn.textContent = useWebSearch
+    ? "✓ جست‌وجو گسترده وب (نمایش ۱۸ نتیجه از ۳۶)"
+    : "جست‌وجو گسترده وب (نمایش ۱۸ نتیجه از ۳۶)";
+  btn.style.background = useWebSearch ? "var(--teal)" : "transparent";
+  btn.style.color = useWebSearch ? "#fff" : "var(--muted)";
+});
+
 document.querySelector("#toggle-listings").addEventListener("click", event => {
   const grid = document.querySelector("#listings");
   grid.classList.toggle("expanded");

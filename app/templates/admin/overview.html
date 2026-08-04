@@ -30,4 +30,24 @@
   <h2>پیش‌نویس وضعیت سیستم</h2>
   <p class="subtle">در این بخش می‌توانی وضعیت سرویس‌ها، حساب‌های متصل و تنظیمات پرکاربرد را در یک نگاه بررسی کنی.</p>
 </div>
+<div class="card">
+  <h2>آمار کاربری (۷ روز اخیر)</h2>
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="hint">جست‌وجو ۷ روز اخیر</div>
+      <strong>{{ recent_searches }}</strong>
+    </div>
+    <div class="summary-card">
+      <div class="hint">لایک/دیسلایک</div>
+      <strong>{{ net_feedback }}</strong>
+    </div>
+    <div class="summary-card">
+      <div class="hint">بازدید غرفه‌ها</div>
+      <strong>{{ total_store_views }}</strong>
+    </div>
+  </div>
+  <p class="subtle" style="margin-top:8px;">
+    <a href="/admin/metrics">← جزئیات متریک‌ها</a>
+  </p>
+</div>
 {% endblock %}

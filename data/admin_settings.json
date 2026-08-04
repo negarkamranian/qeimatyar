@@ -3,8 +3,12 @@
   "USDT_NOTIFICATION_ENABLED": "false",
   "USDT_NOTIFICATION_PERCENT": 1.5,
   "USDT_CHECK_INTERVAL_MINUTES": 60,
-  "APP_ENV": "annotation=Union[str, NoneType] required=False default=None alias='app_env' json_schema_extra={}",
-  "APP_LOG_LEVEL": "annotation=Union[str, NoneType] required=False default=None alias='app_log_level' json_schema_extra={}",
-  "APP_BASE_URL": "annotation=Union[str, NoneType] required=False default=None alias='app_base_url' json_schema_extra={}",
-  "DEMO_MODE": "annotation=union[str, nonetype] required=false default=none alias='demo_mode' json_schema_extra={}"
+  "APP_ENV": "development",
+  "APP_LOG_LEVEL": "INFO",
+  "APP_BASE_URL": "http://localhost:8000",
+  "DEMO_MODE": "true",
+  "AVALAI_API_KEY": "test-key",
+  "AVALAI_BASE_URL": "https://api.avalai.ir/v1",
+  "AVALAI_MODEL": "gpt-5.6-luna",
+  "LLM_SIMILARITY_ENABLED": "true"
 }

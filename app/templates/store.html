@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>{{ store_id }} — قیمت‌یار</title>
+  <meta name="description" content="تحلیل قیمت تمام محصولات غرفه در باسلام، ترب، دیجی‌کالا و باسلام">
+  <link rel="icon" type="image/jpeg" href="/static/logo.jpg" sizes="any">
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css?v=20260802-1">
+  <link rel="stylesheet" href="/static/merchant.css?v=20260729-6">
+</head>
+<body>
+  <header class="simple-header">
+    <a class="brand" href="/">
+      <span class="brand-mark">
+        <img src="/static/logo.jpg" alt="قیمت‌یار" onload="this.nextElementSibling.hidden=true" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
+        <span class="brand-mark-fallback">ق</span>
+      </span>
+      <span><strong>قیمت‌یار</strong><small>پیشنهاد دهنده هوشمند قیمت</small></span>
+    </a>
+    <div class="account-actions">
+      <a href="/">جست‌وجوی تکی</a>
+    </div>
+  </header>
+
+  <main class="merchant-main">
+    <section class="merchant-head">
+      <div>
+        <p class="eyebrow">تحلیل غرفه</p>
+        <h1 id="store-title">...</h1>
+        <p id="store-caption">در حال دریافت محصولات…</p>
+      </div>
+      <div class="store-controls">
+        <input id="product-limit" type="number" min="10" max="100" value="50" style="width:80px;padding:8px;border-radius:8px;border:1px solid #dbe4ee;">
+        <button id="analyze-store" class="sync-button">تحلیل بازار</button>
+        <button id="refresh-products-store" class="sync-button">به‌روزرسانی محصولات</button>
+        <label style="font-size:12px;color:#6b7280;">
+          <input id="use-llm" type="checkbox" {% if settings.llm_similarity_enabled and settings.avalai_api_key %}checked{% endif %}> LLM شباهت
+        </label>
+      </div>
+    </section>
+
+    <div id="toast" class="toast"></div>
+
+    <section class="products-section">
+      <div class="section-title">
+        <div>
+          <h2>محصولات</h2>
+          <p id="store-summary">—</p>
+        </div>
+        <input id="product-filter" type="search" placeholder="فیلتر محصولات">
+      </div>
+      <div id="sync-state" class="sync-state" hidden>
+        <span class="spinner"></span>
+        <div><strong>در حال بررسی بازار</strong><p>لطفاً صبر کنید.</p></div>
+      </div>
+      <div id="products-list" class="products-list">
+        <div class="empty-state">برای شروع، روی «تحلیل بازار» کلیک کنید.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>قیمت‌یار</span>
+    <p>راهنمای قیمت‌گذاری؛ تصمیم نهایی همیشه با فروشنده است.</p>
+  </footer>
+
+  <script src="/static/store.js?v=20260803-1" defer></script>
+</body>
+</html>

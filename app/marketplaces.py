@@ -252,30 +252,20 @@ class MarketCrawler:
                 continue
             listings.extend(outcome)
             statuses.append(SourceStatus(source, True, len(outcome)))
-        if user_states is None:
-            # Relevance threshold is intentionally permissive for short generic queries.
+
+        # Relevance threshold is intentionally permissive for short generic queries.
+        # When LLM similarity is enabled, skip filtering entirely and return all
+        # results so the LLM can rank them without pre-filtering.
+        if settings.llm_similarity_enabled:
+            relevant = sorted(listings, key=lambda item: (-item.similarity, item.price))
+        else:
             query_size = len(_tokens(query))
             threshold = 0.48 if query_size >= 3 else 0.34
             relevant = [item for item in listings if item.similarity >= threshold]
             relevant.sort(key=lambda item: (-item.similarity, item.price))
-        else:  # user_state is not None 
-            liked_urls = [item["url"] for item in user_states if item["userState"] == "like"]
-            disliked_urls = [item["url"] for item in user_states if item["userState"] == "dislike"]
-            good_tokens = set.union(*[_tokens(item["title"]) for item in user_states if item["userState"] == "like"], _tokens(query))
-            bad_tokens = set.union(*[_tokens(item["title"]) for item in user_states if item["userState"] == "dislike"]) - good_tokens
 
-            liked_listings: list[MarketListing] = []
-            new_listings: list[MarketListing] = []
-            for item in listings:
-                if item.url in liked_urls: liked_listings.append(item)
-                elif item.url not in disliked_urls and len(_tokens(item.title) & bad_tokens) == 0: new_listings.append(item)
-            query_size = len(_tokens(query))
-            threshold = 0.48 if query_size >= 3 else 0.34
-            relevant = [item for item in new_listings if item.similarity >= threshold] + liked_listings
-            relevant.sort(key=lambda item: (-item.similarity, item.price))
-            
         result = {
-            "listings": relevant[:60],
+            "listings": relevant[:72],
             "sources": statuses,
             "raw_count": len(listings),
         }
@@ -385,7 +375,11 @@ def _estimate_elasticity(price: int, recommended: int, low: int, high: int) -> d
     }
 
 
-def analyze_listings(listings: list[MarketListing]) -> dict[str, Any]:
+def analyze_listings(
+    listings: list[MarketListing],
+    llm_scores: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    has_llm = bool(llm_scores)
     positive = [item for item in listings if item.price > 0]
     if len(positive) < 3:
         raise ValueError("برای محاسبه بازه قیمت، حداقل سه نتیجه مشابه لازم است.")
@@ -395,8 +389,11 @@ def analyze_listings(listings: list[MarketListing]) -> dict[str, Any]:
         q1 = _percentile(prices, 0.25)
         q3 = _percentile(prices, 0.75)
         iqr = q3 - q1
-        low_fence, high_fence = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-        retained = [item for item in positive if low_fence <= item.price <= high_fence]
+        if has_llm:
+            retained = list(positive)
+        else:
+            low_fence, high_fence = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+            retained = [item for item in positive if low_fence <= item.price <= high_fence]
     else:
         retained = positive
     if len(retained) < 3:
@@ -421,6 +418,20 @@ def analyze_listings(listings: list[MarketListing]) -> dict[str, Any]:
         for source in ("torob", "digikala", "basalam")
     }
     elasticity = _estimate_elasticity(int(fair), int(fair), int(quick), int(patient))
+
+    if has_llm:
+        display_listings = sorted(
+            retained,
+            key=lambda item: -(llm_scores.get(item.url, 0)),
+        )
+        listing_dicts = []
+        for item in display_listings:
+            d = item.public_dict()
+            d["llm_similarity"] = round(llm_scores.get(item.url, 0), 2)
+            listing_dicts.append(d)
+    else:
+        listing_dicts = [item.public_dict() for item in retained]
+
     return {
         "range": {"low": quick, "high": patient},
         "scale": {"low": scale_low, "high": scale_high},
@@ -434,9 +445,10 @@ def analyze_listings(listings: list[MarketListing]) -> dict[str, Any]:
         "sample_size": len(retained),
         "excluded_count": len(positive) - len(retained),
         "source_counts": counts,
-        "listings": [item.public_dict() for item in retained[:18]],
-        "method": "IQR + P25/P50/P75",
+        "listings": listing_dicts,
+        "method": "LLM ranking" if has_llm else "IQR + P25/P50/P75",
         "elasticity": elasticity,
+        "llm_similarity_enabled": has_llm,
     }
 
 

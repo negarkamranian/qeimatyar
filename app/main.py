@@ -4,9 +4,9 @@ import asyncio
 import hmac
 import hashlib
 import json
+import logging
 import secrets
 import time
-import logging
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -20,11 +20,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token
-from app.config import refresh_settings, save_admin_overrides, settings
+import httpx
+
+from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token, fetch_basalam_product, fetch_basalam_store, _basalam_product_id_from_url, _basalam_store_id_from_url
+from app.config import refresh_settings, save_admin_overrides, settings, _env_file_paths
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
+from app.llm import score_product_similarity, optimize_search_query, web_search_products, WebSearchResult
 from app.marketplaces import (
+    MarketListing,
     analyze_listings,
     exclude_marketplace_product,
     market_crawler,
@@ -84,6 +88,9 @@ def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
         "user_count": len(users),
         "active_users": sum(1 for user in users if user["is_active"]),
         "synced_users": sum(1 for user in users if user["products_synced"]),
+        "recent_searches": _recent_searches_count(),
+        "net_feedback": _net_feedback(),
+        "total_store_views": _total_store_views(),
     }
 
 
@@ -94,6 +101,36 @@ def _is_token_expired(expires_at: str | None) -> bool:
         return datetime.fromisoformat(expires_at) <= datetime.now(timezone.utc)
     except ValueError:
         return True
+
+
+def _recent_searches_count() -> int:
+    try:
+        with connection() as db:
+            return db.execute(
+                """SELECT COUNT(*) FROM search_analytics
+                WHERE created_at > ?""",
+                (now_iso(),),
+            ).fetchone()[0]
+    except Exception:
+        return 0
+
+
+def _net_feedback() -> int:
+    try:
+        with connection() as db:
+            return db.execute(
+                "SELECT COALESCE(SUM(rating), 0) FROM user_feedback"
+            ).fetchone()[0]
+    except Exception:
+        return 0
+
+
+def _total_store_views() -> int:
+    try:
+        with connection() as db:
+            return db.execute("SELECT COUNT(*) FROM store_page_views").fetchone()[0]
+    except Exception:
+        return 0
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
@@ -182,6 +219,166 @@ def admin_notifications_page(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/admin/connectivity", response_class=HTMLResponse)
+def admin_connectivity_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/connectivity.html",
+        context={
+            **_admin_context(request, "connectivity"),
+            "status": {
+                "basalam_key_configured": bool(settings.client_id),
+                "basalam_secret_configured": bool(settings.client_secret),
+                "avalai_key_configured": bool(settings.avalai_api_key),
+                "avalai_base_url": settings.avalai_base_url,
+                "avalai_model": settings.avalai_model,
+                "llm_similarity_enabled": settings.llm_similarity_enabled,
+                "marketplace_trust_env": settings.marketplace_trust_env,
+                "demo_mode": settings.demo_mode,
+                "app_env": settings.app_env,
+            },
+        },
+    )
+
+
+@app.get("/admin/api/status")
+def admin_api_status(request: Request) -> dict[str, Any]:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    return {
+        "basalam_key_configured": bool(settings.client_id),
+        "basalam_secret_configured": bool(settings.client_secret),
+        "avalai_key_configured": bool(settings.avalai_api_key),
+        "avalai_base_url": settings.avalai_base_url,
+        "avalai_model": settings.avalai_model,
+        "llm_similarity_enabled": settings.llm_similarity_enabled,
+        "marketplace_trust_env": settings.marketplace_trust_env,
+        "demo_mode": settings.demo_mode,
+        "app_env": settings.app_env,
+    }
+
+
+@app.post("/admin/test/basalam")
+async def test_basalam_connection(request: Request) -> dict[str, Any]:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                "https://openapi.basalam.com/v1/products/search",
+                json={"q": "آیفون", "rows": 1, "start": 0},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                count = 0
+                if isinstance(data, list):
+                    count = len(data)
+                elif isinstance(data, dict):
+                    count = len(data.get("data") or data.get("results") or [])
+                return {"ok": True, "status": response.status_code, "result_count": count, "message": "اتصال موفق"}
+            return {"ok": False, "status": response.status_code, "message": f"خطا: {response.status_code} — {response.text[:200]}"}
+    except Exception as exc:
+        logger.warning("Basalam connectivity test failed: %s", exc)
+        return {"ok": False, "status": 0, "message": str(exc)[:200]}
+
+
+@app.post("/admin/test/marketplace")
+async def test_marketplace_connection(request: Request) -> dict[str, Any]:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    try:
+        crawl = await market_crawler.search("آیفون")
+        results = {}
+        for status in crawl["sources"]:
+            results[status.source] = {"ok": status.ok, "count": status.count, "message": status.message}
+        return {"ok": True, "results": results, "raw_count": crawl["raw_count"]}
+    except Exception as exc:
+        logger.exception("Marketplace connectivity test failed")
+        return {"ok": False, "message": str(exc)[:200]}
+
+
+@app.post("/admin/test/llm")
+async def test_llm_connection(
+    request: Request,
+    prompt: str | None = Form(default=None),
+) -> dict[str, Any]:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    if not settings.avalai_api_key:
+        return {"ok": False, "message": "کلید API AvalAI تنظیم نشده است.", "llm_configured": False}
+    from app.llm import _call_llm
+
+    test_prompt = prompt or "سلام، امروز چه خبر؟"
+    content = await _call_llm(test_prompt, max_tokens=200)
+    if content:
+        return {
+            "ok": True,
+            "model": settings.avalai_model,
+            "base_url": settings.avalai_base_url,
+            "prompt": test_prompt,
+            "response": content[:200],
+            "message": "اتصال موفق (Responses API)",
+        }
+    return {
+        "ok": False,
+        "model": settings.avalai_model,
+        "base_url": settings.avalai_base_url,
+        "prompt": test_prompt,
+        "message": "اتصال ناموفق — لاگ سرور را بررسی کنید (کلید API یا نام مدل ممکن است اشتباه باشد)",
+    }
+
+
+@app.get("/admin/llm", response_class=HTMLResponse)
+def admin_llm_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/llm.html",
+        context={
+            **_admin_context(request, "llm"),
+        },
+    )
+
+
+@app.post("/admin/llm/save")
+def admin_save_llm_settings(
+    request: Request,
+    avalai_api_key: str | None = Form(default=None),
+    avalai_base_url: str | None = Form(default=None),
+    avalai_model: str | None = Form(default=None),
+    llm_similarity_enabled: str | None = Form(default=None),
+) -> RedirectResponse:
+    if not _admin_session(request):
+        raise HTTPException(401, "دسترسی مجاز نیست.")
+    if not avalai_model:
+        raise HTTPException(422, "نام مدل الزامی است.")
+    existing = {}
+    for env_path in _env_file_paths():
+        if env_path.is_file():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key, value = stripped.split("=", 1)
+                existing[key.strip()] = value.strip()
+            break
+    overrides = {
+        "AVALAI_API_KEY": avalai_api_key if avalai_api_key and avalai_api_key.strip() else existing.get("AVALAI_API_KEY", str(settings.avalai_api_key)),
+        "AVALAI_BASE_URL": avalai_base_url or str(settings.avalai_base_url),
+        "AVALAI_MODEL": avalai_model,
+        "LLM_SIMILARITY_ENABLED": llm_similarity_enabled or str(settings.llm_similarity_enabled).lower(),
+    }
+    try:
+        save_admin_overrides(overrides)
+    except Exception:
+        logger.exception("LLM settings save failed")
+        return RedirectResponse("/admin/llm?saved=0", status_code=303)
+    return RedirectResponse("/admin/llm?saved=1", status_code=303)
+
+
 @app.get("/admin/usdt", response_class=HTMLResponse)
 def admin_usdt_page(request: Request) -> HTMLResponse:
     if not _admin_session(request):
@@ -197,7 +394,6 @@ def admin_usdt_page(request: Request) -> HTMLResponse:
 def admin_settings_page(request: Request) -> HTMLResponse:
     if not _admin_session(request):
         return RedirectResponse("/admin/login")
-    from app.config import _env_file_paths
     return templates.TemplateResponse(
         request=request,
         name="admin/settings.html",
@@ -223,22 +419,26 @@ def admin_update_settings(
     app_log_level: str | None = Form(default=None),
     app_base_url: str | None = Form(default=None),
     demo_mode: str | None = Form(default=None),
+    avalai_api_key: str | None = Form(default=None),
+    avalai_base_url: str | None = Form(default=None),
+    avalai_model: str | None = Form(default=None),
+    llm_similarity_enabled: str | None = Form(default=None),
 ) -> RedirectResponse:
     if request is not None and not _admin_session(request):
         raise HTTPException(401, "دسترسی مجاز نیست.")
-    app_env_value = str(app_env or settings.app_env)
-    app_log_level_value = str(app_log_level or settings.log_level)
-    app_base_url_value = str(app_base_url or settings.base_url)
-    demo_mode_value = str(demo_mode or settings.demo_mode).lower()
     overrides = {
-        "MERCHANT_SYNC_HOURS": merchant_sync_hours if merchant_sync_hours is not None else settings.merchant_sync_hours,
-        "USDT_NOTIFICATION_ENABLED": usdt_notification_enabled if usdt_notification_enabled is not None else str(settings.usdt_notification_enabled).lower(),
-        "USDT_NOTIFICATION_PERCENT": usdt_notification_percent if usdt_notification_percent is not None else settings.usdt_notification_percent,
-        "USDT_CHECK_INTERVAL_MINUTES": usdt_check_interval_minutes if usdt_check_interval_minutes is not None else settings.usdt_check_interval_minutes,
-        "APP_ENV": app_env_value,
-        "APP_LOG_LEVEL": app_log_level_value,
-        "APP_BASE_URL": app_base_url_value,
-        "DEMO_MODE": demo_mode_value,
+        "MERCHANT_SYNC_HOURS": merchant_sync_hours if isinstance(merchant_sync_hours, int) else settings.merchant_sync_hours,
+        "USDT_NOTIFICATION_ENABLED": usdt_notification_enabled if isinstance(usdt_notification_enabled, str) else str(settings.usdt_notification_enabled).lower(),
+        "USDT_NOTIFICATION_PERCENT": usdt_notification_percent if isinstance(usdt_notification_percent, (int, float)) else settings.usdt_notification_percent,
+        "USDT_CHECK_INTERVAL_MINUTES": usdt_check_interval_minutes if isinstance(usdt_check_interval_minutes, int) else settings.usdt_check_interval_minutes,
+        "APP_ENV": app_env if isinstance(app_env, str) else str(settings.app_env),
+        "APP_LOG_LEVEL": app_log_level if isinstance(app_log_level, str) else str(settings.log_level),
+        "APP_BASE_URL": app_base_url if isinstance(app_base_url, str) else str(settings.base_url),
+        "DEMO_MODE": demo_mode if isinstance(demo_mode, str) else str(settings.demo_mode).lower(),
+        "AVALAI_API_KEY": str(avalai_api_key) if isinstance(avalai_api_key, str) and avalai_api_key else str(settings.avalai_api_key),
+        "AVALAI_BASE_URL": avalai_base_url if isinstance(avalai_base_url, str) and avalai_base_url else str(settings.avalai_base_url),
+        "AVALAI_MODEL": avalai_model if isinstance(avalai_model, str) and avalai_model else str(settings.avalai_model),
+        "LLM_SIMILARITY_ENABLED": llm_similarity_enabled if isinstance(llm_similarity_enabled, str) and llm_similarity_enabled else str(settings.llm_similarity_enabled).lower(),
     }
     try:
         save_admin_overrides(overrides)
@@ -282,7 +482,8 @@ class PolicyInput(BaseModel):
 class MarketSearchInput(BaseModel):
     product_name: str = Field(min_length=2, max_length=1000)
     exclude_basalam_product_id: int | None = Field(default=None, gt=0)
-    listings_with_user_state: list[dict[str, Any]] | None = Field(default=None)
+    basalam_product_url: str | None = Field(default=None, max_length=500)
+
 
 class RangeOverrideInput(BaseModel):
     min_price: int | None = Field(default=None, gt=0)
@@ -349,6 +550,38 @@ class SearchRateLimiter:
 search_rate_limiter = SearchRateLimiter()
 
 
+SAMPLE_PRODUCT_URLS = [
+    "https://basalam.com/2sotshop/product/2606888",
+    "https://basalam.com/bookmarkett/product/17272424",
+    "https://basalam.com/baneh_makeup/product/21037201",
+    "https://basalam.com/alirezahoseinpor/product/14719190",
+    "https://basalam.com/pantea_shoes/product/9052937",
+    "https://basalam.com/khoshechin/product/932142",
+]
+
+
+@app.get("/api/sample-products")
+async def sample_products() -> dict[str, Any]:
+    async def fetch_one(url: str) -> dict[str, Any]:
+        product_id = _basalam_product_id_from_url(url)
+        if product_id:
+            try:
+                data = await fetch_basalam_product(product_id)
+                if data:
+                    return {
+                        "url": url,
+                        "title": data.get("title", ""),
+                        "image_url": data.get("image_url", ""),
+                        "price": data.get("price", 0),
+                    }
+            except Exception as exc:
+                logger.warning("Sample product fetch failed for %s: %s", url, exc)
+        return {"url": url, "title": "", "image_url": "", "price": 0}
+
+    results = await asyncio.gather(*(fetch_one(url) for url in SAMPLE_PRODUCT_URLS))
+    return {"products": results}
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     user_id = read_session(request.cookies.get(COOKIE_NAME))
@@ -402,6 +635,234 @@ def health() -> dict[str, str]:
     return {"status": "ok", "mode": "demo" if settings.demo_mode else "live"}
 
 
+@app.get("/store/{store_id}")
+def store_page(request: Request, store_id: str) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="store.html",
+        context={"store_id": store_id, "settings": settings},
+    )
+
+
+class StoreAnalysisInput(BaseModel):
+    store_id: str = Field(min_length=1, max_length=200)
+    product_limit: int = Field(default=50, ge=1, le=100)
+    use_llm: bool = Field(default=False)
+
+
+@app.post("/api/store/analyze")
+async def store_analysis(
+    payload: StoreAnalysisInput, request: Request
+) -> dict[str, Any]:
+    client_id = request.client.host if request.client else "unknown"
+    store_id = _basalam_store_id_from_url(payload.store_id) or payload.store_id
+    try:
+        store_info = await fetch_basalam_store(store_id)
+    except Exception as exc:
+        logger.warning("Store fetch failed for %s: %s", store_id, exc)
+        store_info = {"vendor_id": None, "title": store_id, "store_identifier": store_id}
+
+    with connection() as db:
+        db.execute(
+            """INSERT INTO store_page_views (store_id, client_id, created_at)
+            VALUES (?, ?, ?)""",
+            (store_id, client_id, now_iso()),
+        )
+
+    products = await fetch_store_product_list(store_id, max_products=payload.product_limit)
+    if not products:
+        return {"store": store_info, "results": [], "error": "هیچ محصولی یافت نشد."}
+
+    semaphore = asyncio.Semaphore(3)
+
+    async def analyze_product(item: dict[str, Any]) -> dict[str, Any] | None:
+        async with semaphore:
+            try:
+                product_id = item.get("product_id")
+                source_product = None
+                search_query = item["title"]
+                if product_id:
+                    source_product = await fetch_basalam_product(product_id)
+                    if source_product and source_product.get("title"):
+                        search_query = source_product["title"]
+                        if settings.llm_similarity_enabled and settings.avalai_api_key:
+                            optimized = await optimize_search_query(source_product)
+                            if optimized:
+                                search_query = optimized
+                crawl = await market_crawler.search(search_query)
+                listings = crawl["listings"]
+                llm_scores: dict[str, float] = {}
+                if payload.use_llm and settings.llm_similarity_enabled:
+                    llm_scores = await score_product_similarity(search_query, listings, source_product)
+                analysis = analyze_listings(listings, llm_scores)
+                return {
+                    "product_id": item["product_id"] if product_id else 0,
+                    "title": source_product.get("title", "") if source_product else item["title"],
+                    "url": item["url"],
+                    "basalam_url": f"https://basalam.com/p/{item['product_id']}" if item.get("product_id") else "",
+                    "image_url": source_product.get("image_url", "") if source_product else "",
+                    "current_price": source_product.get("price", 0) if source_product else 0,
+                    "stock": 0,
+                    "analysis": {
+                        "recommended": analysis["recommended"],
+                        "range": analysis["range"],
+                        "confidence": analysis["confidence"],
+                        "sample_size": analysis["sample_size"],
+                        "source_counts": analysis["source_counts"],
+                        "listings": analysis["listings"],
+                        "llm_similarity_enabled": analysis.get("llm_similarity_enabled", False),
+                        "method": analysis["method"],
+                    },
+                }
+            except Exception as exc:
+                logger.info("Store product analysis failed for %s: %s", item.get("product_id"), exc)
+                return None
+
+    results = await asyncio.gather(
+        *(analyze_product(item) for item in products)
+    )
+    valid_results = [r for r in results if r is not None]
+    return {"store": store_info, "results": valid_results, "total": len(products)}
+
+
+class FeedbackInput(BaseModel):
+    feedback_type: str = Field(pattern="^(similarity|recommendation)$")
+    target_url: str = Field(min_length=1, max_length=2000)
+    rating: int = Field(ge=-1, le=1)
+    product_name: str | None = None
+    store_id: str | None = None
+
+
+@app.post("/api/feedback")
+def submit_feedback(
+    payload: FeedbackInput, request: Request
+) -> dict[str, bool]:
+    client_id = request.client.host if request.client else "unknown"
+    user_id = read_session(request.cookies.get(COOKIE_NAME))
+    with connection() as db:
+        db.execute(
+            """INSERT INTO user_feedback
+            (client_id, user_id, feedback_type, target_url, rating, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                client_id,
+                user_id,
+                payload.feedback_type,
+                payload.target_url,
+                payload.rating,
+                json.dumps(
+                    {
+                        "product_name": payload.product_name,
+                        "store_id": payload.store_id,
+                    },
+                    ensure_ascii=False,
+                ),
+                now_iso(),
+            ),
+        )
+    return {"ok": True}
+
+
+class ButtonClickInput(BaseModel):
+    button_name: str = Field(min_length=1, max_length=100)
+    product_id: int | None = None
+    store_id: str | None = None
+    product_url: str | None = None
+
+
+@app.post("/api/metrics/button-click")
+def record_button_click(
+    payload: ButtonClickInput, request: Request
+) -> dict[str, bool]:
+    client_id = request.client.host if request.client else "unknown"
+    user_id = read_session(request.cookies.get(COOKIE_NAME))
+    with connection() as db:
+        db.execute(
+            """INSERT INTO button_click_metrics
+            (button_name, product_id, store_id, product_url, client_id, user_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                payload.button_name,
+                str(payload.product_id) if payload.product_id else None,
+                payload.store_id,
+                payload.product_url,
+                client_id,
+                user_id,
+                now_iso(),
+            ),
+        )
+    return {"ok": True}
+
+
+@app.get("/admin/metrics", response_class=HTMLResponse)
+def admin_metrics_page(request: Request) -> HTMLResponse:
+    if not _admin_session(request):
+        return RedirectResponse("/admin/login")
+    with connection() as db:
+        total_feedback = db.execute("SELECT COUNT(*) FROM user_feedback").fetchone()[0]
+        recommendation_likes = db.execute(
+            "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='recommendation' AND rating=1"
+        ).fetchone()[0]
+        recommendation_dislikes = db.execute(
+            "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='recommendation' AND rating=-1"
+        ).fetchone()[0]
+        similarity_likes = db.execute(
+            "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='similarity' AND rating=1"
+        ).fetchone()[0]
+        similarity_dislikes = db.execute(
+            "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='similarity' AND rating=-1"
+        ).fetchone()[0]
+        total_clicks = db.execute("SELECT COUNT(*) FROM button_click_metrics").fetchone()[0]
+        total_store_views = db.execute("SELECT COUNT(*) FROM store_page_views").fetchone()[0]
+        total_searches = db.execute("SELECT COUNT(*) FROM search_analytics").fetchone()[0]
+        button_counts = {
+            row["button_name"]: row["cnt"]
+            for row in db.execute(
+                "SELECT button_name, COUNT(*) AS cnt FROM button_click_metrics GROUP BY button_name"
+            ).fetchall()
+        }
+        recent_searches = [
+            dict(row)
+            for row in db.execute(
+                """SELECT query, resolved_from_url, result_count, used_llm, created_at, client_id
+                FROM search_analytics ORDER BY created_at DESC LIMIT 30"""
+            ).fetchall()
+        ]
+        recent_feedback = [
+            dict(row)
+            for row in db.execute(
+                """SELECT feedback_type, rating, target_url, user_id, client_id, created_at
+                FROM user_feedback ORDER BY created_at DESC LIMIT 50"""
+            ).fetchall()
+        ]
+        recent_clicks = [
+            dict(row)
+            for row in db.execute(
+                """SELECT button_name, product_id, store_id, product_url, user_id, client_id, created_at
+                FROM button_click_metrics ORDER BY created_at DESC LIMIT 50"""
+            ).fetchall()
+        ]
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/metrics.html",
+        context={
+            **_admin_context(request, "metrics"),
+            "total_feedback": total_feedback,
+            "recommendation_likes": recommendation_likes,
+            "recommendation_dislikes": recommendation_dislikes,
+            "similarity_likes": similarity_likes,
+            "similarity_dislikes": similarity_dislikes,
+            "total_clicks": total_clicks,
+            "total_store_views": total_store_views,
+            "total_searches": total_searches,
+            "button_counts": button_counts,
+            "recent_searches": recent_searches,
+            "recent_feedback": recent_feedback,
+            "recent_clicks": recent_clicks,
+        },
+    )
+
+
 @app.post("/api/market/analyze")
 async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[str, Any]:
     client_id = request.client.host if request.client else "unknown"
@@ -429,8 +890,19 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         )
         if merchant_rows:
             merchant_product = merchant_rows[0]
+    source_product: dict[str, Any] | None = None
+    search_query = query
+    if payload.basalam_product_url and settings.llm_similarity_enabled:
+        product_id = _basalam_product_id_from_url(payload.basalam_product_url)
+        if product_id:
+            source_product = await fetch_basalam_product(product_id)
+            if source_product and source_product.get("title"):
+                search_query = source_product["title"]
+                optimized = await optimize_search_query(source_product)
+                if optimized:
+                    search_query = optimized
     try:
-        crawl = await market_crawler.search(query, user_states=payload.listings_with_user_state)
+        crawl = await market_crawler.search(search_query)
     except Exception as exc:
         logger.exception("Marketplace crawler initialization failed")
         raise HTTPException(
@@ -448,7 +920,10 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
                 "basalam",
                 excluded_product_id,
             )
-        analysis = analyze_listings(listings)
+        llm_scores: dict[str, float] = {}
+        if settings.llm_similarity_enabled:
+            llm_scores = await score_product_similarity(search_query, listings, source_product)
+        analysis = analyze_listings(listings, llm_scores)
     except ValueError as exc:
         raise HTTPException(
             422,
@@ -458,10 +933,28 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
                 "raw_count": crawl["raw_count"],
             },
         ) from exc
+    with connection() as db:
+        db.execute(
+            """INSERT INTO search_analytics
+            (client_id, user_id, query, resolved_from_url, source_product_id,
+            result_count, used_llm, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                client_id,
+                merchant_user_id,
+                query,
+                resolved_from_url,
+                str(source_product.get("product_id")) if source_product else None,
+                analysis["sample_size"],
+                settings.llm_similarity_enabled,
+                now_iso(),
+            ),
+        )
     return {
         "query": query,
         "resolved_from_url": resolved_from_url,
         "merchant_product": merchant_product,
+        "source_product": source_product,
         "analysis": analysis,
         "sources": statuses,
         "raw_count": crawl["raw_count"],
@@ -469,7 +962,106 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
     }
 
 
-@app.get("/auth/basalam")
+@app.post("/api/market/analyze-extended")
+async def market_analysis_extended(payload: MarketSearchInput, request: Request) -> dict[str, Any]:
+    """Extended analysis: fetch product from Basalam link, optimize query via LLM,
+    web-search 36 product links across all Iranian marketplaces, score similarity,
+    and return the top 18 results with full analysis.
+    """
+    if not settings.llm_similarity_enabled or not settings.avalai_api_key:
+        raise HTTPException(400, "امکانات LLM/وب‌جستجو فعال نیست.")
+
+    client_id = request.client.host if request.client else "unknown"
+    if not await search_rate_limiter.allow(client_id):
+        raise HTTPException(
+            429,
+            "تعداد جست‌وجوها بیش از حد مجاز است؛ یک دقیقه دیگر دوباره تلاش کنید.",
+            headers={"Retry-After": "60"},
+        )
+
+    try:
+        query, resolved_from_url = await resolve_product_query(payload.product_name)
+    except ProductLinkError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    excluded_product_id = (
+        payload.exclude_basalam_product_id
+        or basalam_product_id_from_url(payload.product_name)
+    )
+
+    source_product: dict[str, Any] | None = None
+    search_query = query
+
+    if payload.basalam_product_url and settings.llm_similarity_enabled:
+        product_id = _basalam_product_id_from_url(payload.basalam_product_url)
+        if product_id:
+            source_product = await fetch_basalam_product(product_id)
+            if source_product and source_product.get("title"):
+                search_query = source_product["title"]
+                optimized = await optimize_search_query(source_product)
+                if optimized:
+                    search_query = optimized
+
+    web_results = await web_search_products(search_query, count=36)
+
+    if not web_results:
+        logger.warning("Web search returned no results for query: %s", search_query)
+
+    listings = [
+        MarketListing(
+            source="web_search",
+            title=r.title,
+            price=0,
+            url=r.url,
+            image_url="",
+            similarity=0,
+            external_id="",
+        )
+        for r in web_results[:36]
+    ]
+
+    llm_scores = await score_product_similarity(search_query, listings, source_product)
+
+    for listing in listings:
+        if listing.url in llm_scores:
+            listing.__dict__["similarity"] = llm_scores[listing.url]  # type: ignore
+
+    if excluded_product_id:
+        listings = exclude_marketplace_product(listings, "basalam", excluded_product_id)
+
+    analysis = analyze_listings(listings, llm_scores)
+
+    with connection() as db:
+        db.execute(
+            """INSERT INTO search_analytics
+            (client_id, user_id, query, resolved_from_url, source_product_id,
+            result_count, used_llm, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                client_id,
+                read_session(request.cookies.get(COOKIE_NAME)),
+                query,
+                resolved_from_url,
+                str(source_product.get("product_id")) if source_product else None,
+                analysis["sample_size"],
+                settings.llm_similarity_enabled,
+                now_iso(),
+            ),
+        )
+
+    top_18 = analysis["listings"][:18]
+    analysis["listings"] = top_18
+    analysis["total_listings"] = len(listings)
+
+    return {
+        "query": query,
+        "resolved_from_url": resolved_from_url,
+        "source_product": source_product,
+        "analysis": analysis,
+        "sources": [],
+        "raw_count": len(listings),
+        "disclaimer": "این نتایج از وب‌جستجو و مرورگرهای بازار آنلاین ایران جمع‌آوری شده‌اند؛ برای تصمیم‌گیری نهایی، قیمت و وضعیت کالا را بررسی کنید.",
+    }
 def connect_basalam() -> RedirectResponse:
     if not settings.client_id or not settings.client_secret:
         raise HTTPException(503, "Basalam OAuth credentials are not configured.")
@@ -727,6 +1319,7 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
         product["effective_min"] = product["user_min"] or product["market_low"]
         product["effective_max"] = product["user_max"] or product["market_high"]
         product["customized"] = bool(product["user_min"] or product["user_max"])
+        product["basalam_url"] = f"https://basalam.com/p/{product['product_id']}"
         if product["market_suggested"]:
             ready += 1
     return {
@@ -739,6 +1332,52 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
             "product_limit": settings.merchant_product_limit,
         },
         "products": products,
+    }
+
+
+@app.post("/api/merchant/analyze-product/{product_id}")
+async def merchant_analyze_product(
+    product_id: int,
+    request: Request,
+) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    product_rows = rows(
+        """SELECT * FROM merchant_products WHERE user_id=? AND product_id=?""",
+        (user_id, product_id),
+    )
+    if not product_rows:
+        raise HTTPException(404, "محصول پیدا نشد.")
+    product = product_rows[0]
+    product_id_val = product["product_id"]
+    source_product: dict[str, Any] | None = None
+    search_query = product["title"]
+    try:
+        source_product = await fetch_basalam_product(product_id_val)
+        if source_product and source_product.get("title"):
+            search_query = source_product["title"]
+            if settings.llm_similarity_enabled and settings.avalai_api_key:
+                optimized = await optimize_search_query(source_product)
+                if optimized:
+                    search_query = optimized
+    except Exception as exc:
+        logger.warning("fetch_basalam_product failed for %s: %s", product_id_val, exc)
+
+    crawl = await market_crawler.search(search_query)
+    listings = exclude_marketplace_product(
+        crawl["listings"],
+        "basalam",
+        product_id_val,
+    )
+    llm_scores: dict[str, float] = {}
+    if settings.llm_similarity_enabled:
+        llm_scores = await score_product_similarity(search_query, listings, source_product)
+    analysis = analyze_listings(listings, llm_scores)
+    return {
+        "product_id": product_id_val,
+        "title": product["title"],
+        "source_product": source_product,
+        "analysis": analysis,
+        "basalam_edit_url": f"https://basalam.com/vendor/products/{product_id_val}",
     }
 
 

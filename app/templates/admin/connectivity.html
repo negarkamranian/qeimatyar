@@ -1,0 +1,142 @@
+{% extends "admin/base.html" %}
+{% block title %}تست اتصال — پنل مدیریت{% endblock %}
+{% block content %}
+<h1>تست اتصال سرویس‌ها</h1>
+<p class="hint">وضعیت پیکربندی و تست اتصال به باسلام، ترب، دیجی‌کالا و AvalAI LLM.</p>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="hint">کلاینت آی‌دی باسلام</div>
+    <strong>{{ "✓ تنظیم شده" if status.basalam_key_configured else "✗ خالی" }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">سکرت باسلام</div>
+    <strong>{{ "✓ تنظیم شده" if status.basalam_secret_configured else "✗ خالی" }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">کلید AvalAI</div>
+    <strong>{{ "✓ تنظیم شده" if status.avalai_key_configured else "✗ خالی" }}</strong>
+  </div>
+  <div class="summary-card">
+    <div class="hint">LLM شباهت</div>
+    <strong>{{ "✓ فعال" if status.llm_similarity_enabled else "✗ غیرفعال" }}</strong>
+  </div>
+</div>
+
+<div class="card">
+  <h2>تست‌های اتصال</h2>
+  <div class="test-row">
+    <button id="test-basalam" class="ghost-button">تست اتصال باسلام API</button>
+    <span id="result-basalam" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-marketplaces" class="ghost-button">تست جست‌وجو در تمام بازارها</button>
+    <span id="result-marketplaces" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-torob" class="ghost-button">تست ترب</button>
+    <span id="result-torob" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-digikala" class="ghost-button">تست دیجی‌کالا</button>
+    <span id="result-digikala" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-basalam-market" class="ghost-button">تست باسلام مارکت‌پلیس</button>
+    <span id="result-basalam-market" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-llm" class="ghost-button">تست اتصال AvalAI LLM</button>
+    <input id="llm-test-prompt" type="text" class="ghost-button" style="max-width:240px;font-size:11px;padding:6px 8px;" placeholder="متن تست (اختیاری)" value="سلام، امروز چه خبر؟">
+    <span id="result-llm" class="test-result">—</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>جزئیات پیکربندی</h2>
+  <p class="subtle">AvalAI Base URL: <code>{{ status.avalai_base_url }}</code></p>
+  <p class="subtle">AvalAI Model: <code>{{ status.avalai_model }}</code></p>
+  <p class="subtle">Demo Mode: <code>{{ status.demo_mode }}</code></p>
+  <p class="subtle">APP_ENV: <code>{{ status.app_env }}</code></p>
+  <p class="subtle">Marketplace Trust Env: <code>{{ status.marketplace_trust_env }}</code></p>
+</div>
+{% endblock %}
+
+{% block extra_data %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  async function runTest(buttonId, resultId, endpoint, hasPrompt = false, sourceFilter = null) {
+    const btn = document.getElementById(buttonId);
+    const result = document.getElementById(resultId);
+    btn.disabled = true;
+    btn.textContent = "در حال تست…";
+    result.textContent = "در حال بررسی…";
+    result.className = "test-result testing";
+    try {
+      const options = { method: "POST" };
+      if (hasPrompt) {
+        const promptInput = document.getElementById("llm-test-prompt");
+        const formData = new FormData();
+        if (promptInput && promptInput.value.trim()) {
+          formData.append("prompt", promptInput.value.trim());
+        }
+        options.body = formData;
+      }
+      const response = await fetch(endpoint, options);
+      const data = await response.json();
+      if (data.ok) {
+        if (data.results && sourceFilter) {
+          const srcResult = data.results[sourceFilter];
+          if (srcResult) {
+            result.textContent = srcResult.ok
+              ? `${srcResult.count} محصول — موفق`
+              : `ناموفق: ${srcResult.message || "خطا"}`;
+            result.className = "test-result " + (srcResult.ok ? "success" : "error");
+          } else {
+            result.textContent = "منبع یافت نشد";
+            result.className = "test-result error";
+          }
+        } else {
+          result.textContent = data.message || "موفق";
+          result.className = "test-result success";
+        }
+      } else {
+        result.textContent = data.message || "ناموفق";
+        result.className = "test-result error";
+      }
+      if (data.response && !sourceFilter) {
+        result.textContent += " → " + data.response.substring(0, 80);
+      }
+    } catch (e) {
+      result.textContent = "خطا: " + e.message;
+      result.className = "test-result error";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = btn.dataset.original;
+    }
+  }
+
+  const tests = [
+    {id: "test-basalam", result: "result-basalam", endpoint: "/admin/test/basalam"},
+    {id: "test-marketplaces", result: "result-marketplaces", endpoint: "/admin/test/marketplace", source: null},
+    {id: "test-torob", result: "result-torob", endpoint: "/admin/test/marketplace", source: "torob"},
+    {id: "test-digikala", result: "result-digikala", endpoint: "/admin/test/marketplace", source: "digikala"},
+    {id: "test-basalam-market", result: "result-basalam-market", endpoint: "/admin/test/marketplace", source: "basalam"},
+    {id: "test-llm", result: "result-llm", endpoint: "/admin/test/llm", hasPrompt: true},
+  ];
+  tests.forEach(t => {
+    const btn = document.getElementById(t.id);
+    btn.dataset.original = btn.textContent;
+    btn.addEventListener("click", () => runTest(t.id, t.result, t.endpoint, t.hasPrompt, t.source));
+  });
+});
+</script>
+<style>
+.test-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.test-result { font-size: 12px; padding: 4px 8px; border-radius: 6px; }
+.test-result.testing { background: #eef2ff; color: #3730a3; }
+.test-result.success { background: #dcfce8; color: #166534; }
+.test-result.error { background: #fee2e2; color: #991b1b; }
+code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+</style>
+{% endblock %}

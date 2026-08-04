@@ -55,8 +55,23 @@
         <option value="false" {% if not settings.demo_mode %}selected{% endif %}>false</option>
       </select>
     </div>
+    <div class="row-divider"></div>
+    <h3 style="margin:0 0 8px;font-size:11px;color:#5b6b7f;">تنظیمات LLM در صفحه <a href="/admin/llm">سرویس LLM</a> قابل تنظیم است.</h3>
     <button type="submit">ذخیره تنظیمات دیپلوی</button>
   </form>
+</div>
+
+<div class="card">
+  <h2>تست ارتباط LLM</h2>
+  <p class="subtle">کلید API، آدرس پایه و مدل را ذخیره کنید، سپس متن دلخواه یا پیام پیش‌فرض را برای تست بفرستید.</p>
+  <form id="llm-test-form" method="post" action="/admin/test/llm">
+    <div class="row">
+      <label for="test_prompt">متن تست</label>
+      <textarea id="test_prompt" name="prompt" rows="2" maxlength="500" placeholder="سلام، امروز چه خبر؟">سلام، امروز چه خبر؟</textarea>
+    </div>
+    <button type="submit" id="llm-test-button">بررسی اتصال LLM</button>
+  </form>
+  <div id="llm-test-result" class="llm-test-result" hidden></div>
 </div>
 <div class="card">
   <form method="post" action="/admin/settings/refresh">
@@ -65,7 +80,7 @@
 </div>
 <div class="card">
   <h2>فایل تنظیمات</h2>
-  <p class="subtle">تنظیمات در فایل <strong>{{ admin_settings_file }}</strong> و فایل .env مربوطه ذخیره می‌شوند.</p>
+  <p class="subtle">تنظیمات در فایل <strong>{{ admin_settings_file }}</strong> و فایل .env مربوطه ذخیره می‌شوند. پس از ذخیره، مقادیر بلافاصله در حافظه بروز می‌شوند؛ نیازی به ریستارت سرور نیست.</p>
   {% if env_file_paths %}
   <p class="subtle">فایل‌های محیطی هدف: {{ env_file_paths|join(", ") }}</p>
   {% endif %}

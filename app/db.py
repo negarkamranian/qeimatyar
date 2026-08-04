@@ -121,6 +121,54 @@ def init_db() -> None:
                 last_checked_at TEXT NOT NULL,
                 last_notified_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS user_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT,
+                user_id INTEGER,
+                feedback_type TEXT NOT NULL,
+                target_url TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_feedback_target
+              ON user_feedback(target_url, created_at);
+            CREATE TABLE IF NOT EXISTS button_click_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                button_name TEXT NOT NULL,
+                product_id TEXT,
+                store_id TEXT,
+                product_url TEXT,
+                client_id TEXT,
+                user_id INTEGER,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_button_clicks_button
+              ON button_click_metrics(button_name, created_at);
+            CREATE TABLE IF NOT EXISTS store_page_views (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                store_id TEXT NOT NULL,
+                client_id TEXT,
+                user_id INTEGER,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_store_page_views_store
+              ON store_page_views(store_id, created_at);
+            CREATE TABLE IF NOT EXISTS search_analytics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT,
+                user_id INTEGER,
+                query TEXT NOT NULL,
+                resolved_from_url INTEGER NOT NULL DEFAULT 0,
+                source_product_id TEXT,
+                result_count INTEGER NOT NULL,
+                used_llm INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_search_analytics_created
+              ON search_analytics(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_search_analytics_query
+              ON search_analytics(query);
             """
         )
         account_columns = {
@@ -136,6 +184,12 @@ def init_db() -> None:
         for column, statement in migrations.items():
             if column not in account_columns:
                 db.execute(statement)
+
+        button_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(button_click_metrics)").fetchall()
+        }
+        if "product_url" not in button_columns:
+            db.execute("ALTER TABLE button_click_metrics ADD COLUMN product_url TEXT")
 
 
 def seed_demo() -> None:

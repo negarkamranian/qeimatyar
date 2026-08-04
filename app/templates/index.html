@@ -39,27 +39,36 @@
         <p>نام دقیق یا لینک محصول را وارد کن؛ قیمت‌های مشابه را پیدا می‌کنیم و یک بازه مناسب فروش پیشنهاد می‌دهیم.</p>
       </div>
 
+      <div class="query-helper">
+        <strong>چگونه جست‌وجو کنیم؟</strong>
+        <p>لینک محصول خود را از باسلام در قالب <code>https://basalam.com/نام‌فروشگاه/product/شناسه</code> وارد کنید. قیمت‌های مشابه در ترب، دیجی‌کالا و باسلام یافت می‌شوند و بازه مناسب فروش پیشنهاد می‌شود.</p>
+      </div>
+
       <form id="search-form" class="search-box">
-        <label for="product-name">نام یا لینک محصول</label>
+        <label for="product-name">لینک محصول باسلام</label>
         <div class="search-control">
           <span class="search-icon" aria-hidden="true">⌕</span>
           <input
             id="product-name"
             name="product_name"
-            type="text"
+            type="url"
             minlength="2"
             maxlength="1000"
             autocomplete="off"
-            placeholder="نام محصول یا لینک آن در باسلام، ترب یا دیجی‌کالا"
+            placeholder="https://basalam.com/نام-فروشگاه/product/شناسه"
             required
           >
-          <button type="submit">محاسبه قیمت</button>
+          <button type="submit">بررسی قیمت</button>
         </div>
-        <div class="examples">
-          <span>نمونه:</span>
-          <button type="button" data-example="عسل طبیعی آویشن ۹۰۰ گرم">عسل آویشن ۹۰۰ گرم</button>
-          <button type="button" data-example="کاور آیفون">کاور آیفون</button>
-          <button type="button" data-example="هدفون بی سیم انکر Soundcore Q30">هدفون Anker Q30</button>
+
+        <div class="search-toggle" style="margin-top: 8px; display: flex; gap: 8px; justify-content: center;">
+          <button type="button" id="toggle-web-search" class="ghost-button" style="font-size: 10px;">
+            جست‌وجو گسترده وب (نمایش ۱۸ نتیجه از ۳۶)
+          </button>
+        </div>
+
+        <div id="sample-products" class="sample-products">
+          <span>یا روی یکی از محصولات نمونه بزنید:</span>
         </div>
       </form>
 
@@ -96,6 +105,7 @@
         <div>
           <span class="eyebrow">تحلیل بازار</span>
           <h1 id="result-title"></h1>
+          <p id="search-query-display" class="query-display"></p>
         </div>
         <div class="result-actions">
           <a id="merchant-back" class="merchant-back" href="/merchant" hidden>بازگشت به محصولات غرفه</a>
@@ -127,6 +137,15 @@
             <span id="low-label">—</span>
             <span id="high-label">—</span>
           </div>
+
+          <div class="slider-buttons">
+            <button id="set-to-optimal" class="slider-btn">
+              <span>🎯</span>قیمت بهینه
+            </button>
+            <button id="update-in-basalam" class="slider-btn basalam-btn" hidden>
+              <span>💰</span>به‌روزرسانی قیمت در باسلام
+            </button>
+          </div>
         </div>
 
         <div class="recommendation">
@@ -135,7 +154,21 @@
             <strong id="recommended-price">—</strong>
             <span>تومان</span>
           </div>
-          <button id="use-recommended">انتخاب قیمت پیشنهادی</button>
+           <button id="use-recommended">استفاده از این قیمت</button>
+           <button id="set-price-basalam" class="update-price-button" hidden>
+             <span>💰</span>تنظیم قیمت در باسلام
+           </button>
+          <div class="feedback-buttons">
+            <button id="dislike-recommendation" class="feedback-button dislike" title="قیمت پیشنهادی مناسب نیست">
+              <span>👎</span>
+            </button>
+            <button id="like-recommendation" class="feedback-button like" title="قیمت پیشنهادی مناسب است">
+              <span>👍</span>
+            </button>
+          </div>
+          <button id="update-basalam-price" class="update-price-button" hidden>
+            <span>💰</span>به‌روزرسانی قیمت در باسلام
+          </button>
         </div>
         <div id="price-risk" class="price-risk neutral" role="status" aria-live="polite">
           <strong id="risk-title">قیمت در محدوده‌ی پیشنهادی</strong>
@@ -191,6 +224,6 @@
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260802-1" defer></script>
+  <script src="/static/app.js?v=20260803-4" defer></script>
 </body>
 </html>

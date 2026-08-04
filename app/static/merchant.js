@@ -65,6 +65,25 @@ function productAnalysisUrl(product) {
   });
   return `/?${params.toString()}`;
 }
+function productBasalamEditUrl(product) {
+  return `https://basalam.com/vendor/products/${product.product_id}`;
+}
+async function recordButtonClick(buttonName, productId = null) {
+  try {
+    await fetch("/api/metrics/button-click", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        button_name: buttonName,
+        product_id: productId,
+        store_id: window.STORE_ID || null,
+        product_url: window.location.href || null,
+      }),
+    });
+  } catch {
+    // best-effort
+  }
+}
 function renderNotifications(unreadCount = 0) {
   const badge = document.querySelector("#notifications-badge");
   badge.hidden = unreadCount <= 0;
@@ -110,7 +129,10 @@ function productRow(product) {
     <div class="price-block"><small>قیمت فعلی</small><strong>${toman(product.current_price)} تومان</strong></div>
     <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
     <div class="product-actions">
-      <a class="analysis-link" href="${analysisUrl}">تحلیل بازار</a>
+      <a class="analysis-link" href="${analysisUrl}" onclick="recordButtonClick('merchant_analysis', ${product.product_id})">تحلیل بازار</a>
+      ${product.market_suggested
+        ? `<button class="set-price-btn" onclick="setPriceInBasalam(${product.product_id}, ${product.market_suggested || 0})">تنظیم قیمت در باسلام به ${toman(product.market_suggested || 0)} تومان</button>`
+        : ""}
     </div>
   </article>`;
 }
@@ -120,6 +142,11 @@ function renderProducts() {
   document.querySelector("#products-list").innerHTML = products.length
     ? products.map(productRow).join("")
     : `<div class="empty-state">${state.products.length ? "محصولی با این نام نیست." : "هنوز محصولی دریافت نشده است."}</div>`;
+}
+function setPriceInBasalam(productId, price) {
+  recordButtonClick("set_price_basalam_merchant", productId);
+  const url = `https://basalam.com/vendor/products/${productId}`;
+  window.open(url, "_blank", "noopener");
 }
 async function loadDashboard() {
   const data = await api("/api/merchant/dashboard");
@@ -148,6 +175,22 @@ async function startSync() {
   }
 }
 document.querySelector("#sync-button").addEventListener("click", startSync);
+document.querySelector("#sync-products-button").addEventListener("click", async function() {
+  recordButtonClick("sync_products");
+  const button = document.querySelector("#sync-products-button");
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "در حال به‌روزرسانی…";
+  try {
+    await api("/api/merchant/sync", { method: "POST" });
+    toast("به‌روزرسانی محصولات شروع شد.");
+    await loadDashboard();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = originalText;
+    toast(error.message);
+  }
+});
 document.querySelector("#product-filter").addEventListener("input", renderProducts);
 document.addEventListener("click", event => {
   const row = event.target.closest(".product-row[data-analysis-url]");
