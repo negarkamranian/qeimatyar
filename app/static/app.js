@@ -230,7 +230,7 @@ function renderResult(data) {
   document.querySelector("#selected-price-label").textContent =
     merchantContext.active
       ? "قیمت پیشنهادی بازار"
-      : "قیمت انتخابی شما";
+      : "قیمت محصول وارد شده";
   const merchantPriceNote = document.querySelector("#merchant-price-note");
   merchantPriceNote.hidden = !(merchantContext.active && merchantContext.currentPrice);
   if (merchantContext.active && merchantContext.currentPrice) {
@@ -267,8 +267,8 @@ function renderResult(data) {
         <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ ${simLabel}</small>
         <small>${escapeHtml(sourceNames[item.source] || item.source)}</small>
       </span>
-      <button class="remove-listing-button" type="button" data-remove-url="${href}" aria-label="حذف قیمت ${escapeHtml(item.title)}">
-        <span aria-hidden="true">×</span> حذف قیمت
+      <button class="remove-listing-button" type="button" data-remove-url="${href}" aria-label="حذف قیمت ${escapeHtml(item.title)}" title="حذف این قیمت">
+        <span aria-hidden="true">×</span>
       </button>
     </article>`;
   }).join("");
@@ -314,7 +314,7 @@ function setupUpdateBasalamButton() {
   const sourceProduct = currentAnalysis?.source_product;
   if (sourceProduct && sourceProduct.product_id) {
     btn.hidden = false;
-    btn.innerHTML = '<span>💰</span>استفاده از این قیمت در غرفه';
+    btn.innerHTML = '<span>💰</span>اعمال این قیمت در غرفه';
     btn.onclick = () => {
       recordButtonClick("use_price_in_store", sourceProduct.product_id);
       window.open(`https://vendor.basalam.com/edit-product/${sourceProduct.product_id}`, "_blank", "noopener");
@@ -326,13 +326,8 @@ function setupUseRecommendedButton() {
   const btn = document.querySelector("#use-recommended");
   if (!btn) return;
   btn.onclick = () => {
-    const slider = document.querySelector("#price-slider");
-    slider.value = Number(currentAnalysis?.analysis?.recommended || 0);
-    document.querySelector("#selected-price-label").textContent = merchantContext.active
-      ? "قیمت انتخابی شما"
-      : "قیمت انتخابی شما";
-    updateSelectedPrice();
     recordButtonClick("use_recommended_price");
+    window.location.assign("https://qeimatyar.ir/merchant");
   };
 }
 
