@@ -63,6 +63,7 @@ button, input { font: inherit; }
 .seller-option { display: grid; grid-template-columns: 44px 1fr; gap: 11px; align-items: center; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
 .marketplace-mark { width: 44px; height: 44px; display: grid; place-items: center; margin: 0; border-radius: 12px; overflow: hidden; }
 .marketplace-mark.basalam-mark { font-size: 21px; }
+.basalam-mark img { width: 34px; height: 34px; object-fit: contain; }
 .digikala-mark { background: #fff1f3; }
 .digikala-mark img { width: 30px; height: 30px; object-fit: contain; }
 .seller-option-copy strong, .seller-option-copy small { display: block; }
