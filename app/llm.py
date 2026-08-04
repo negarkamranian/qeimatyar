@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -295,3 +296,111 @@ Marketplace search results (24 per source, up to 72 total):
 
 Return ONLY a JSON array of integers (0-100), one per product, in the same order.
 Example: [88, 85, 68, 25, 5, 60]'''
+
+
+@dataclass
+class WebSearchResult:
+    title: str
+    url: str
+    snippet: str
+
+
+async def web_search_products(query: str, count: int = 36) -> list[WebSearchResult]:
+    """Use LLM with web search to find product purchase links across Iranian marketplaces.
+
+    Searches the web for product links from Basalam, Digikala, Torob, Snap Shop,
+    Tapsell Shop, and other online stores. Returns up to *count* results with
+    title, URL, and a snippet.
+    """
+    if not settings.avalai_api_key:
+        return []
+
+    search_prompt = f'''جست‌وجو کنید در وب‌سایت‌های زیر بازار ایران و لینک محصول و قیمت دقیق را پیدا کنید: {query}
+
+فروشگاه‌ها و بازارهای معتبر ایرانی: basalam.com، digikala.com، torob.com، snapshop.ir، tapshop.ir، و فروشگاه‌های آنلاین معتبر.
+
+لطفاً حداکثر {count} نتیجه از لینک‌های محصول واقعی را با این فرمت خروجی بدهید:
+
+Title: [عنوان محصول]
+URL: https://[دامنه]/[مسیر]
+Snippet: [قیمت و توضیح کوتاه]
+---
+Title: ...'''
+
+    headers = {
+        "Authorization": f"Bearer {settings.avalai_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    client = httpx.AsyncClient(
+        base_url=settings.avalai_base_url,
+        timeout=httpx.Timeout(120, connect=15),
+        headers=headers,
+    )
+
+    results: list[WebSearchResult] = []
+    try:
+        response = await client.post(
+            "/responses",
+            json={
+                "model": settings.avalai_model,
+                "input": search_prompt,
+                "tools": [{"type": "web_search"}],
+                "max_tokens": 8000,
+            },
+        )
+        if response.status_code == 200:
+            data = response.json()
+            content = data.get("output_text")
+            if not content:
+                output = data.get("output")
+                if isinstance(output, list):
+                    for item in output:
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get("type") == "message":
+                            content_items = item.get("content", [])
+                            if isinstance(content_items, list):
+                                for ci in content_items:
+                                    if isinstance(ci, dict) and ci.get("type") == "output_text":
+                                        content = ci.get("text", "")
+                                        break
+                            if content:
+                                break
+        else:
+            logger.warning("Web search /responses returned %d", response.status_code)
+            content = None
+
+        if content:
+            results = _parse_web_search_results(content, count)
+            logger.info("Web search returned %d/%d results for query: %s", len(results), count, query)
+    except httpx.HTTPError as exc:
+        logger.warning("Web search failed: %s", exc)
+    finally:
+        await client.aclose()
+
+    return results
+
+
+def _parse_web_search_results(content: str, count: int) -> list[WebSearchResult]:
+    """Parse LLM web search output into structured results."""
+    results = []
+    blocks = content.strip().split("---")
+    for block in blocks:
+        lines = block.strip().split("\n")
+        title = ""
+        url = ""
+        snippet = ""
+        for line in lines:
+            line = line.strip()
+            if line.startswith("Title:"):
+                title = line[len("Title:"):].strip()
+            elif line.startswith("URL:"):
+                url = line[len("URL:"):].strip()
+            elif line.startswith("Snippet:"):
+                snippet = line[len("Snippet:"):].strip()
+        if url and title:
+            results.append(WebSearchResult(title=title, url=url, snippet=snippet))
+            if len(results) >= count:
+                break
+    return results

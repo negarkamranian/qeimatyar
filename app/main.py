@@ -26,8 +26,9 @@ from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token, fet
 from app.config import refresh_settings, save_admin_overrides, settings, _env_file_paths
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
-from app.llm import score_product_similarity, optimize_search_query
+from app.llm import score_product_similarity, optimize_search_query, web_search_products, WebSearchResult
 from app.marketplaces import (
+    MarketListing,
     analyze_listings,
     exclude_marketplace_product,
     market_crawler,
@@ -961,7 +962,106 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
     }
 
 
-@app.get("/auth/basalam")
+@app.post("/api/market/analyze-extended")
+async def market_analysis_extended(payload: MarketSearchInput, request: Request) -> dict[str, Any]:
+    """Extended analysis: fetch product from Basalam link, optimize query via LLM,
+    web-search 36 product links across all Iranian marketplaces, score similarity,
+    and return the top 18 results with full analysis.
+    """
+    if not settings.llm_similarity_enabled or not settings.avalai_api_key:
+        raise HTTPException(400, "امکانات LLM/وب‌جستجو فعال نیست.")
+
+    client_id = request.client.host if request.client else "unknown"
+    if not await search_rate_limiter.allow(client_id):
+        raise HTTPException(
+            429,
+            "تعداد جست‌وجوها بیش از حد مجاز است؛ یک دقیقه دیگر دوباره تلاش کنید.",
+            headers={"Retry-After": "60"},
+        )
+
+    try:
+        query, resolved_from_url = await resolve_product_query(payload.product_name)
+    except ProductLinkError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    excluded_product_id = (
+        payload.exclude_basalam_product_id
+        or basalam_product_id_from_url(payload.product_name)
+    )
+
+    source_product: dict[str, Any] | None = None
+    search_query = query
+
+    if payload.basalam_product_url and settings.llm_similarity_enabled:
+        product_id = _basalam_product_id_from_url(payload.basalam_product_url)
+        if product_id:
+            source_product = await fetch_basalam_product(product_id)
+            if source_product and source_product.get("title"):
+                search_query = source_product["title"]
+                optimized = await optimize_search_query(source_product)
+                if optimized:
+                    search_query = optimized
+
+    web_results = await web_search_products(search_query, count=36)
+
+    if not web_results:
+        logger.warning("Web search returned no results for query: %s", search_query)
+
+    listings = [
+        MarketListing(
+            source="web_search",
+            title=r.title,
+            price=0,
+            url=r.url,
+            image_url="",
+            similarity=0,
+            external_id="",
+        )
+        for r in web_results[:36]
+    ]
+
+    llm_scores = await score_product_similarity(search_query, listings, source_product)
+
+    for listing in listings:
+        if listing.url in llm_scores:
+            listing.__dict__["similarity"] = llm_scores[listing.url]  # type: ignore
+
+    if excluded_product_id:
+        listings = exclude_marketplace_product(listings, "basalam", excluded_product_id)
+
+    analysis = analyze_listings(listings, llm_scores)
+
+    with connection() as db:
+        db.execute(
+            """INSERT INTO search_analytics
+            (client_id, user_id, query, resolved_from_url, source_product_id,
+            result_count, used_llm, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                client_id,
+                read_session(request.cookies.get(COOKIE_NAME)),
+                query,
+                resolved_from_url,
+                str(source_product.get("product_id")) if source_product else None,
+                analysis["sample_size"],
+                settings.llm_similarity_enabled,
+                now_iso(),
+            ),
+        )
+
+    top_18 = analysis["listings"][:18]
+    analysis["listings"] = top_18
+    analysis["total_listings"] = len(listings)
+
+    return {
+        "query": query,
+        "resolved_from_url": resolved_from_url,
+        "source_product": source_product,
+        "analysis": analysis,
+        "sources": [],
+        "raw_count": len(listings),
+        "disclaimer": "این نتایج از وب‌جستجو و مرورگرهای بازار آنلاین ایران جمع‌آوری شده‌اند؛ برای تصمیم‌گیری نهایی، قیمت و وضعیت کالا را بررسی کنید.",
+    }
 def connect_basalam() -> RedirectResponse:
     if not settings.client_id or not settings.client_secret:
         raise HTTPException(503, "Basalam OAuth credentials are not configured.")

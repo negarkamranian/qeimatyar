@@ -15,6 +15,7 @@ let merchantContext = {
 };
 const toman = value => new Intl.NumberFormat("fa-IR").format(Math.round(value || 0));
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
+let useWebSearch = false;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -133,7 +134,8 @@ async function analyze(productName) {
     if (merchantContext.active && merchantContext.productId) {
       requestBody.exclude_basalam_product_id = merchantContext.productId;
     }
-    const response = await fetch("/api/market/analyze", {
+    const endpoint = useWebSearch ? "/api/market/analyze-extended" : "/api/market/analyze";
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
@@ -525,6 +527,16 @@ document.querySelector("#search-form").addEventListener("submit", event => {
   if (productName.length >= 2) {
     analyze(productName);
   }
+});
+
+document.querySelector("#toggle-web-search").addEventListener("click", () => {
+  useWebSearch = !useWebSearch;
+  const btn = document.querySelector("#toggle-web-search");
+  btn.textContent = useWebSearch
+    ? "✓ جست‌وجو گسترده وب (نمایش ۱۸ نتیجه از ۳۶)"
+    : "جست‌وجو گسترده وب (نمایش ۱۸ نتیجه از ۳۶)";
+  btn.style.background = useWebSearch ? "var(--teal)" : "transparent";
+  btn.style.color = useWebSearch ? "#fff" : "var(--muted)";
 });
 
 document.querySelector("#toggle-listings").addEventListener("click", event => {
