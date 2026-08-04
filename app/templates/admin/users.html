@@ -1,67 +1,111 @@
 {% extends "admin/base.html" %}
-{% block title %}سرویس کاربران — پنل مدیریت{% endblock %}
+{% block title %}کاربران — پنل مدیریت{% endblock %}
 {% block content %}
-<h1>سرویس کاربران</h1>
-<p class="hint">لیست کاربران و غرفه‌های متصل در این بخش مدیریت می‌شود.</p>
-<div class="card">
+<div class="page-head">
+  <div>
+    <h1>کاربران و غرفه‌ها</h1>
+    <p class="hint">سلامت اتصال فروشندگان، پوشش محصول و موارد نیازمند پیگیری.</p>
+  </div>
+</div>
+
+<div class="summary-grid">
+  <article class="summary-card primary"><div class="hint">غرفه‌های متصل</div><strong>{{ user_count }}</strong><small>کل حساب‌های ثبت‌شده</small></article>
+  <article class="summary-card good"><div class="hint">غرفه‌های دارای محصول</div><strong>{{ synced_users }}</strong><small>پوشش {{ total_products }} محصول</small></article>
+  <article class="summary-card"><div class="hint">در حال همگام‌سازی</div><strong>{{ active_users }}</strong><small>صف یا عملیات فعال</small></article>
+  <article class="summary-card {% if attention_users %}danger{% else %}good{% endif %}"><div class="hint">نیازمند بررسی</div><strong>{{ attention_users }}</strong><small>{{ expired_users }} توکن منقضی · {{ error_users }} خطا</small></article>
+</div>
+
+<div class="toolbar users-toolbar">
+  <div class="search-field"><input id="user-search" type="search" placeholder="جست‌وجوی نام غرفه، کاربر یا شناسه…" aria-label="جست‌وجوی کاربران"></div>
+  <select id="user-health-filter" aria-label="فیلتر وضعیت اتصال">
+    <option value="all">همه وضعیت‌ها</option>
+    <option value="healthy">اتصال سالم</option>
+    <option value="syncing">در حال همگام‌سازی</option>
+    <option value="attention">نیازمند بررسی</option>
+  </select>
+  <select id="user-product-filter" aria-label="فیلتر محصولات">
+    <option value="all">همه غرفه‌ها</option>
+    <option value="synced">دارای محصول</option>
+    <option value="empty">بدون محصول</option>
+  </select>
+  <span id="user-result-count" class="result-count"></span>
+</div>
+
+<section class="card table-card users-table-card">
+  <div class="card-head"><div><h2>فهرست غرفه‌ها</h2><p class="subtle">برای جزئیات حساب و محصولات، نام کاربر را انتخاب کنید.</p></div></div>
   <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>نام غرفه</th>
-          <th>شناسه غرفه</th>
-          <th>کاربر</th>
-          <th>محصولات</th>
-          <th>وضعیت</th>
-          <th>آخرین همگام‌سازی</th>
-          <th>اتصال</th>
-          <th>خطا</th>
-        </tr>
-      </thead>
+    <table class="users-table">
+      <thead><tr><th>غرفه</th><th>کاربر</th><th>محصولات</th><th>سلامت اتصال</th><th>آخرین همگام‌سازی</th><th>جزئیات</th></tr></thead>
       <tbody>
         {% for user in users %}
-        <tr>
-          <td>
-            <a href="https://basalam.com/s/{{ user.vendor_id }}" target="_blank" rel="noopener"
-               style="color:#0f766e;font-weight:600;text-decoration:none;"
-               title="باز شدن در باسلام">
-              {{ user.vendor_title }}
-              <span aria-hidden="true"> ↗</span>
-            </a>
+        <tr
+          data-search="{{ user.vendor_title }} {{ user.vendor_id }} {{ user.user_name or '' }}"
+          data-health="{% if user.sync_error or user.token_expired %}attention{% elif user.is_active %}syncing{% else %}healthy{% endif %}"
+          data-products="{{ 'synced' if user.products_synced else 'empty' }}"
+        >
+          <td class="cell-title">
+            <strong><a href="https://basalam.com/s/{{ user.vendor_id }}" target="_blank" rel="noopener">{{ user.vendor_title }} ↗</a></strong>
+            <small>شناسه غرفه: {{ user.vendor_id }}</small>
           </td>
-          <td class="subtle">{{ user.vendor_id }}</td>
-          <td><a href="/admin/users/{{ user.user_id }}">{{ user.user_name or '-' }}</a></td>
+          <td><a href="/admin/users/{{ user.user_id }}">{{ user.user_name or "بدون نام" }}</a></td>
           <td>
             {% if user.products_synced %}
-              <a href="/admin/users/{{ user.user_id }}" class="badge" title="مشاهده همه محصولات">
-                {{ user.product_count }} محصول
-              </a>
-              {% if user.product_titles %}
-                <div class="subtle" style="font-size:.8rem;margin-top:4px;">
-                  {{ user.product_titles[:120] }}{% if user.product_titles|length > 120 %}…{% endif %}
-                </div>
-              {% endif %}
+            <span class="badge">{{ user.product_count }} محصول</span>
             {% else %}
-              <span class="badge inactive">هنوز همگام‌سازی نشده</span>
+            <span class="badge inactive">بدون محصول</span>
             {% endif %}
           </td>
           <td>
-            <span class="badge {% if not user.is_active %}inactive{% endif %}">
-              {{ 'در حال کار' if user.is_active else 'غیرفعال' }}
-            </span>
-            {% if user.token_expired and not user.is_active %}
-              <div class="subtle" style="font-size:.8rem;margin-top:4px;">توکن منقضی شده</div>
+            {% if user.sync_error %}
+            <span class="badge danger">خطای همگام‌سازی</span>
+            {% elif user.token_expired %}
+            <span class="badge warning">توکن منقضی</span>
+            {% elif user.is_active %}
+            <span class="badge">در حال همگام‌سازی</span>
+            {% else %}
+            <span class="badge">سالم</span>
             {% endif %}
           </td>
-          <td>{{ user.last_synced_at or 'هنوز' }}</td>
-          <td class="subtle">{{ user.connected_at or '-' }}</td>
-          <td class="subtle">{% if user.sync_error %}{{ user.sync_error }}{% else %}—{% endif %}</td>
+          <td class="subtle">{{ user.last_synced_at[:16]|replace('T', ' ') if user.last_synced_at else "هنوز انجام نشده" }}</td>
+          <td><a class="badge inactive" href="/admin/users/{{ user.user_id }}">مشاهده ←</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="hint">هنوز کاربری متصل نشده است.</td></tr>
+        <tr><td colspan="6" class="empty-state">هنوز کاربری متصل نشده است.</td></tr>
         {% endfor %}
+        <tr id="users-filter-empty" hidden><td colspan="6" class="empty-state">کاربری با این فیلترها پیدا نشد.</td></tr>
       </tbody>
     </table>
   </div>
-</div>
+</section>
+{% endblock %}
+
+{% block extra_data %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const search = document.getElementById("user-search");
+  const health = document.getElementById("user-health-filter");
+  const products = document.getElementById("user-product-filter");
+  const count = document.getElementById("user-result-count");
+  const empty = document.getElementById("users-filter-empty");
+  const rows = [...document.querySelectorAll(".users-table tbody tr[data-health]")];
+
+  function applyFilters() {
+    const term = search.value.trim().toLowerCase();
+    let visible = 0;
+    rows.forEach(row => {
+      const matchesSearch = !term || row.dataset.search.toLowerCase().includes(term);
+      const matchesHealth = health.value === "all" || row.dataset.health === health.value;
+      const matchesProducts = products.value === "all" || row.dataset.products === products.value;
+      const show = matchesSearch && matchesHealth && matchesProducts;
+      row.hidden = !show;
+      if (show) visible += 1;
+    });
+    empty.hidden = visible !== 0 || rows.length === 0;
+    count.textContent = `${visible.toLocaleString("fa-IR")} غرفه`;
+  }
+
+  [search, health, products].forEach(control => control.addEventListener("input", applyFilters));
+  applyFilters();
+});
+</script>
 {% endblock %}

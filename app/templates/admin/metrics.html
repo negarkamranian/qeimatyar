@@ -1,137 +1,175 @@
 {% extends "admin/base.html" %}
 {% block title %}متریک‌ها — پنل مدیریت{% endblock %}
 {% block content %}
-<h1>متریک‌های کاربری و بازخورد</h1>
-<p class="hint">در این بخش بازخوردهای کاربران، کلیک‌ها و بازدیدهای صفحات غرفه نمایش داده می‌شوند.</p>
-<div class="summary-grid">
-  <div class="summary-card">
-    <div class="hint">کل بازخوردها</div>
-    <strong>{{ total_feedback }}</strong>
+<div class="page-head">
+  <div>
+    <h1>متریک‌های کسب‌وکار</h1>
+    <p class="hint">نمای ساده‌ای از جذب، تعامل و اقدام کاربران برای گزارش مدیریتی.</p>
   </div>
-  <div class="summary-card">
-    <div class="hint">لایک قیمت</div>
-    <strong>{{ recommendation_likes }}</strong>
-  </div>
-  <div class="summary-card">
-    <div class="hint">دیسلایک قیمت</div>
-    <strong>{{ recommendation_dislikes }}</strong>
-  </div>
-  <div class="summary-card">
-    <div class="hint">لایک محصول</div>
-    <strong>{{ similarity_likes }}</strong>
-  </div>
-  <div class="summary-card">
-    <div class="hint">دیسلایک محصول</div>
-    <strong>{{ similarity_dislikes }}</strong>
-  </div>
-  <div class="summary-card">
-    <div class="hint">تحلیل بازار از غرفه</div>
-    <strong>{{ button_counts.get("merchant_analysis", 0) }}</strong>
-  </div>
-  <div class="summary-card">
-    <div class="hint">بروزرسانی قیمت در باسلام (غرفه)</div>
-    <strong>{{ button_counts.get("set_price_basalam_merchant", 0) }} + {{ button_counts.get("sync_products", 0) }} همگام‌سازی</strong>
-  </div>
-  <div class="summary-card">
-    <div class="hint">بروزرسانی قیمت در باسلام (جست‌وجو)</div>
-    <strong>{{ button_counts.get("update_price_basalam", 0) }} + {{ button_counts.get("set_to_optimal_price", 0) }} بهینه</strong>
-  </div>
-  <div class="summary-card">
+  <nav class="filter-tabs" aria-label="بازه گزارش">
+    <a href="?days=7" class="{% if selected_period == '7' %}active{% endif %}">۷ روز</a>
+    <a href="?days=30" class="{% if selected_period == '30' %}active{% endif %}">۳۰ روز</a>
+    <a href="?days=90" class="{% if selected_period == '90' %}active{% endif %}">۹۰ روز</a>
+    <a href="?days=all" class="{% if selected_period == 'all' %}active{% endif %}">همه</a>
+  </nav>
+</div>
+
+<div class="summary-grid investor-kpis">
+  <article class="summary-card primary">
+    <div class="hint">جست‌وجوی محصول</div>
+    <strong>{{ total_searches }}</strong>
+    <small>تقاضای ثبت‌شده در بازه</small>
+  </article>
+  <article class="summary-card">
+    <div class="hint">بازدیدکننده یکتا</div>
+    <strong>{{ distinct_visitors }}</strong>
+    <small>بر اساس شناسه بازدیدکننده</small>
+  </article>
+  <article class="summary-card">
     <div class="hint">بازدید صفحات غرفه</div>
     <strong>{{ total_store_views }}</strong>
+    <small>تعامل با ویترین فروشندگان</small>
+  </article>
+  <article class="summary-card good">
+    <div class="hint">نرخ بازخورد مثبت</div>
+    <strong>{{ positive_rate }}٪</strong>
+    <small>{{ total_feedback }} بازخورد ثبت‌شده</small>
+  </article>
+  <article class="summary-card good">
+    <div class="hint">نرخ اقدام روی قیمت</div>
+    <strong>{{ action_rate }}٪</strong>
+    <small>نسبت اقدام‌های اصلی به جست‌وجو</small>
+  </article>
+  <article class="summary-card">
+    <div class="hint">کل تعامل با دکمه‌ها</div>
+    <strong>{{ total_clicks }}</strong>
+    <small>همه اقدام‌های قابل‌اندازه‌گیری</small>
+  </article>
+</div>
+
+<section class="card chart-card" aria-labelledby="activity-title">
+  <div>
+    <div class="card-head" style="padding:0;border:0;min-height:auto;">
+      <div>
+        <h2 id="activity-title">روند فعالیت روزانه</h2>
+        <p class="subtle">مجموع جست‌وجو، بازدید غرفه و کلیک در ۱۴ روز فعال اخیر</p>
+      </div>
+    </div>
+    {% if activity_days %}
+    <div class="activity-chart" role="img" aria-label="نمودار فعالیت روزانه">
+      {% for item in activity_days %}
+      <div class="activity-day" title="{{ item.day }} — {{ item.total }} رویداد">
+        <div class="activity-bar" style="--height: {{ [6, (item.total * 100 / max_activity)|round]|max }}%;"></div>
+        <small>{{ item.day[5:] }}</small>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">در این بازه هنوز فعالیتی ثبت نشده است.</p>
+    {% endif %}
   </div>
-  <div class="summary-card">
-    <div class="hint">کل جست‌وجوها</div>
-    <strong>{{ total_searches }}</strong>
+  <div class="chart-legend">
+    <div><span>جست‌وجو</span><strong>{{ total_searches }}</strong></div>
+    <div><span>بازدید غرفه</span><strong>{{ total_store_views }}</strong></div>
+    <div><span>کلیک</span><strong>{{ total_clicks }}</strong></div>
   </div>
+</section>
+
+<div class="summary-grid compact-kpis">
+  <article class="summary-card good"><div class="hint">قیمت مناسب بود</div><strong>{{ recommendation_likes }}</strong><small>بازخورد مثبت قیمت</small></article>
+  <article class="summary-card warn"><div class="hint">قیمت نیاز به اصلاح داشت</div><strong>{{ recommendation_dislikes }}</strong><small>فرصت بهبود پیشنهاد</small></article>
+  <article class="summary-card good"><div class="hint">محصول مشابه بود</div><strong>{{ similarity_likes }}</strong><small>تأیید تطبیق</small></article>
+  <article class="summary-card warn"><div class="hint">محصول نامرتبط بود</div><strong>{{ similarity_dislikes }}</strong><small>اصلاح داده مقایسه</small></article>
 </div>
-<div class="card">
-  <h2>آخرین جست‌وجوها</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>زمان</th>
-        <th>جست‌وجو</th>
-        <th>نتایج</th>
-        <th>LLM</th>
-        <th>آی‌دی بازدیدکننده</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in recent_searches %}
-      <tr>
-        <td>{{ s.created_at }}</td>
-        <td>{{ s.query[:60] }}</td>
-        <td>{{ s.result_count }} عدد</td>
-        <td>{{ "✓" if s.used_llm else "—" }}</td>
-        <td>{{ s.client_id[:12] if s.client_id else "" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-<div class="card">
-  <h2>آخرین بازخوردها</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>زمان</th>
-        <th>نوع</th>
-        <th>امتیاز</th>
-        <th>محصول / لینک</th>
-        <th>آی‌دی کاربر</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for fb in recent_feedback %}
-      <tr>
-        <td>{{ fb.created_at }}</td>
-        <td>{{ "قیمت" if fb.feedback_type == "recommendation" else "محصول" }}</td>
-        <td>
-          {% if fb.rating > 0 %}👍{% elif fb.rating < 0 %}👎{% else %}⚪{% endif %}
-        </td>
-        <td dir="ltr">{{ fb.target_url[:80] }}</td>
-        <td>{{ fb.user_id or fb.client_id[:12] }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-<div class="card">
-  <h2>آخرین کلیک‌های دکمه‌ها</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>زمان</th>
-        <th>دکمه</th>
-        <th>محصول</th>
-        <th>فروشگاه</th>
-        <th>آی‌دی کاربر</th>
-        <th>آی‌دی بازدیدکننده</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for c in recent_clicks %}
-      <tr>
-        <td>{{ c.created_at }}</td>
-        <td>{{ c.button_name }}</td>
-        <td dir="ltr">{{ c.product_url[:60] if c.product_url else c.product_id or "" }}</td>
-        <td>{{ c.store_id or "" }}</td>
-        <td>{{ c.user_id or "" }}</td>
-        <td>{{ c.client_id[:12] if c.client_id else "" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+
+<section class="card table-card">
+  <div class="card-head">
+    <div>
+      <h2>جزئیات فعالیت‌ها</h2>
+      <p class="subtle">آخرین رویدادهای بازه انتخاب‌شده</p>
+    </div>
+    <div class="filter-tabs metric-panel-tabs" role="tablist">
+      <button class="filter-tab active" type="button" data-panel="searches">جست‌وجوها</button>
+      <button class="filter-tab" type="button" data-panel="feedback">بازخوردها</button>
+      <button class="filter-tab" type="button" data-panel="clicks">کلیک‌ها</button>
+    </div>
+  </div>
+  <div class="toolbar metrics-toolbar">
+    <div class="search-field"><input id="metric-table-search" type="search" placeholder="جست‌وجو در جدول فعال…" aria-label="جست‌وجو در جدول"></div>
+    <span id="metric-result-count" class="result-count"></span>
+  </div>
+
+  <div class="metric-table-panel" data-panel-name="searches">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>زمان</th><th>جست‌وجو</th><th>نتایج</th><th>پردازش هوشمند</th><th>بازدیدکننده</th></tr></thead>
+        <tbody>
+          {% for s in recent_searches %}
+          <tr><td class="subtle">{{ s.created_at[:16]|replace('T', ' ') }}</td><td class="cell-title"><strong>{{ s.query[:70] }}</strong></td><td>{{ s.result_count }}</td><td><span class="badge {% if not s.used_llm %}inactive{% endif %}">{{ "فعال" if s.used_llm else "خاموش" }}</span></td><td class="subtle">{{ s.client_id[:12] if s.client_id else "—" }}</td></tr>
+          {% else %}<tr><td colspan="5" class="empty-state">جست‌وجویی در این بازه ثبت نشده است.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="metric-table-panel" data-panel-name="feedback" hidden>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>زمان</th><th>موضوع</th><th>نتیجه</th><th>محصول / لینک</th><th>کاربر</th></tr></thead>
+        <tbody>
+          {% for fb in recent_feedback %}
+          <tr><td class="subtle">{{ fb.created_at[:16]|replace('T', ' ') }}</td><td>{{ "پیشنهاد قیمت" if fb.feedback_type == "recommendation" else "تطبیق محصول" }}</td><td><span class="badge {% if fb.rating < 0 %}warning{% endif %}">{{ "مثبت" if fb.rating > 0 else "منفی" if fb.rating < 0 else "خنثی" }}</span></td><td class="cell-title" dir="ltr"><small>{{ fb.target_url[:90] }}</small></td><td>{{ fb.user_id or (fb.client_id[:12] if fb.client_id else "—") }}</td></tr>
+          {% else %}<tr><td colspan="5" class="empty-state">بازخوردی در این بازه ثبت نشده است.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="metric-table-panel" data-panel-name="clicks" hidden>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>زمان</th><th>اقدام</th><th>محصول</th><th>غرفه</th><th>کاربر</th></tr></thead>
+        <tbody>
+          {% for c in recent_clicks %}
+          <tr><td class="subtle">{{ c.created_at[:16]|replace('T', ' ') }}</td><td><span class="badge">{{ c.button_name }}</span></td><td class="cell-title" dir="ltr"><small>{{ c.product_url[:70] if c.product_url else c.product_id or "—" }}</small></td><td>{{ c.store_id or "—" }}</td><td>{{ c.user_id or (c.client_id[:12] if c.client_id else "—") }}</td></tr>
+          {% else %}<tr><td colspan="5" class="empty-state">کلیکی در این بازه ثبت نشده است.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
 {% endblock %}
+
 {% block extra_data %}
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-  const toasts = document.querySelectorAll(".toast");
-  toasts.forEach(toast => {
-    setTimeout(() => toast.classList.add("hide"), 4000);
-  });
+document.addEventListener("DOMContentLoaded", function () {
+  const tabs = document.querySelectorAll(".metric-panel-tabs [data-panel]");
+  const panels = document.querySelectorAll(".metric-table-panel");
+  const search = document.getElementById("metric-table-search");
+  const count = document.getElementById("metric-result-count");
+
+  function filterRows() {
+    const panel = document.querySelector(".metric-table-panel:not([hidden])");
+    if (!panel) return;
+    const term = (search.value || "").trim().toLowerCase();
+    const rows = [...panel.querySelectorAll("tbody tr")].filter(row => !row.querySelector(".empty-state"));
+    let visible = 0;
+    rows.forEach(row => {
+      const matches = !term || row.textContent.toLowerCase().includes(term);
+      row.hidden = !matches;
+      if (matches) visible += 1;
+    });
+    count.textContent = `${visible.toLocaleString("fa-IR")} ردیف`;
+  }
+
+  tabs.forEach(tab => tab.addEventListener("click", function () {
+    tabs.forEach(item => item.classList.toggle("active", item === tab));
+    panels.forEach(panel => { panel.hidden = panel.dataset.panelName !== tab.dataset.panel; });
+    search.value = "";
+    filterRows();
+  }));
+  search.addEventListener("input", filterRows);
+  filterRows();
 });
 </script>
 {% endblock %}

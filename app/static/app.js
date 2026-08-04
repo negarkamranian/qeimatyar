@@ -106,7 +106,6 @@ async function fetchSampleProducts() {
     if (!response.ok) return;
     const body = await response.json();
     const products = body.products || [];
-    container.innerHTML = '<span>یا روی یکی از محصولات نمونه بزنید:</span>';
     products.forEach(product => {
       const image = product.image_url
         ? escapeHtml(product.image_url)

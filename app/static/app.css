@@ -168,8 +168,8 @@ h1, h2, p { margin-top: 0; }
 
 .trust-row { display: flex; align-items: center; justify-content: center; gap: 26px; margin: 36px auto; }
 .trust-row > div { display: grid; grid-template-columns: 34px auto; grid-template-rows: auto auto; column-gap: 9px; text-align: right; align-items: center; }
-.source-logo { grid-row: 1 / 3; width: 34px; height: 34px; display: grid; place-items: center; color: white; border-radius: 9px; font-weight: 800; }
-.source-logo.torob { background: #d73751; }.source-logo.digikala { background: #e71c38; }.source-logo.basalam { background: #ef8c2f; }
+.source-logo { grid-row: 1 / 3; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 11px; background: #fff; overflow: hidden; box-shadow: 0 4px 12px rgba(30,49,43,.06); }
+.source-logo img { width: 100%; height: 100%; display: block; object-fit: contain; }
 .trust-row strong { font-size: 11px; }
 .trust-row small { font-size: 8px; color: var(--muted); }
 .trust-row > i { height: 28px; width: 1px; background: var(--line); }
@@ -436,14 +436,16 @@ footer p { margin: 0; }
   .search-control { display: grid; }
   .search-control button { width: 100%; height: 49px; }
   .trust-row { gap: 9px; }
+  .trust-row > div { display: flex; flex-direction: column; gap: 5px; text-align: center; }
+  .source-logo { width: 42px; height: 42px; border-radius: 12px; }
   .trust-row > i { display: none; }
   .trust-row small { display: none; }
   .method-note { align-items: flex-start; }
   .method-graph { display: none; }
   .result-view { width: calc(100% - 24px); margin: 14px auto 40px; }
   .result-head { align-items: flex-start; margin-bottom: 10px; }
-  .result-head h1 { max-width: min(62vw, 330px); font-size: 20px; line-height: 1.5; }
-  .result-actions { flex-direction: column-reverse; align-items: stretch; text-align: center; flex: none; }
+  .result-head h1 { max-width: min(70vw, 420px); font-size: 20px; line-height: 1.5; }
+  .result-actions { flex-direction: row; align-items: center; text-align: center; flex: none; }
   .merchant-price-note { align-items: flex-start; flex-wrap: wrap; }
   .selected-price { padding: 13px 16px 7px; }
   .selected-price strong { font-size: 29px; }
@@ -471,28 +473,32 @@ footer p { margin: 0; }
   .brand strong { font-size: 16px; }
   .merchant-link { padding: 7px 9px; font-size: 10px; }
   .result-view { width: calc(100% - 20px); }
-  .result-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .result-head { display: flex; flex-direction: column; gap: 7px; }
   .result-head .eyebrow { margin-bottom: 2px; }
   .result-head h1 { max-width: none; font-size: 18px; }
   .query-display { overflow-wrap: anywhere; }
-  .ghost-button, .merchant-back { padding: 7px 9px; font-size: 9px; }
+  .result-actions { width: 100%; }
+  .ghost-button, .merchant-back { min-height: 36px; padding: 7px 10px; font-size: 9px; }
   .pricing-card, .matching-column { border-radius: 12px; }
-  .selected-price { padding: 11px 13px 4px; }
-  .selected-price strong { font-size: 26px; }
+  .selected-price { padding: 13px 13px 6px; text-align: center; }
+  .selected-price div { justify-content: center; }
+  .selected-price strong { font-size: 28px; }
   .price-slider { padding: 10px 13px 12px; }
   .sale-signal { max-width: 168px; padding: 6px 8px; }
   .slider-buttons { flex-direction: column; }
   .slider-btn { min-height: 40px; }
-  .recommendation { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 13px; }
+  .recommendation { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 11px 13px; }
   .recommendation strong { font-size: 17px; }
   .recommendation button#use-recommended { min-height: 40px; padding: 8px 10px; }
   .recommendation-feedback { grid-column: 1 / -1; width: 100%; }
   .feedback-buttons { display: grid; grid-template-columns: 1fr 1fr; }
   .feedback-button { min-height: 38px; }
   .price-risk { padding: 9px 13px 10px; }
-  .summary-grid { grid-template-columns: 1fr; gap: 5px; }
-  .summary-grid article { min-height: 44px; }
-  .summary-icon { display: grid; }
+  .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .summary-grid article { min-height: 58px; padding: 7px 5px; justify-content: center; text-align: center; }
+  .summary-grid small { font-size: 7px; white-space: nowrap; }
+  .summary-grid strong { font-size: 8px; line-height: 1.55; overflow-wrap: anywhere; }
+  .summary-icon { display: none; }
   .section-head { align-items: center; }
   .section-head h2 { font-size: 14px; }
   .section-head p { max-width: 74vw; line-height: 1.6; }

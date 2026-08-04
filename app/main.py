@@ -10,9 +10,9 @@ import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -88,6 +88,12 @@ def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
         "user_count": len(users),
         "active_users": sum(1 for user in users if user["is_active"]),
         "synced_users": sum(1 for user in users if user["products_synced"]),
+        "expired_users": sum(1 for user in users if user["token_expired"]),
+        "error_users": sum(1 for user in users if user.get("sync_error")),
+        "attention_users": sum(
+            1 for user in users if user["token_expired"] or user.get("sync_error")
+        ),
+        "total_products": sum(int(user.get("product_count") or 0) for user in users),
         "recent_searches": _recent_searches_count(),
         "net_feedback": _net_feedback(),
         "total_store_views": _total_store_views(),
@@ -105,11 +111,12 @@ def _is_token_expired(expires_at: str | None) -> bool:
 
 def _recent_searches_count() -> int:
     try:
+        since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         with connection() as db:
             return db.execute(
                 """SELECT COUNT(*) FROM search_analytics
                 WHERE created_at > ?""",
-                (now_iso(),),
+                (since,),
             ).fetchone()[0]
     except Exception:
         return 0
@@ -141,12 +148,17 @@ def admin_login_page(request: Request) -> HTMLResponse:
 
 
 @app.post("/admin/login")
-def admin_login(request: Request, password: str = Form(...)) -> RedirectResponse:
+def admin_login(
+    request: Request,
+    password: str = Form(...),
+    next_url: Annotated[str, Form()] = "/admin",
+) -> RedirectResponse:
     if not settings.admin_enabled or not settings.admin_password:
         raise HTTPException(403, "پنل مدیریت فعال نیست.")
     if password != settings.admin_password:
         raise HTTPException(401, "رمزعبور اشتباه است.")
-    response = RedirectResponse("/admin", status_code=303)
+    safe_next_url = next_url if next_url.startswith("/admin") and not next_url.startswith("//") else "/admin"
+    response = RedirectResponse(safe_next_url, status_code=303)
     response.set_cookie("admin_session", settings.secret, httponly=True, secure=settings.app_env == "production", samesite="lax")
     return response
 
@@ -834,53 +846,114 @@ def record_button_click(
 
 
 @app.get("/admin/metrics", response_class=HTMLResponse)
-def admin_metrics_page(request: Request) -> HTMLResponse:
+def admin_metrics_page(
+    request: Request,
+    days: str = Query("30", pattern="^(7|30|90|all)$"),
+) -> HTMLResponse:
     if not _admin_session(request):
         return RedirectResponse("/admin/login")
+    selected_days = None if days == "all" else int(days)
+    since = (
+        (datetime.now(timezone.utc) - timedelta(days=selected_days)).isoformat()
+        if selected_days
+        else None
+    )
+    where = " WHERE created_at >= ?" if since else ""
+    params = (since,) if since else ()
     with connection() as db:
-        total_feedback = db.execute("SELECT COUNT(*) FROM user_feedback").fetchone()[0]
+        total_feedback = db.execute(
+            f"SELECT COUNT(*) FROM user_feedback{where}", params
+        ).fetchone()[0]
         recommendation_likes = db.execute(
             "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='recommendation' AND rating=1"
+            + (" AND created_at >= ?" if since else ""), params
         ).fetchone()[0]
         recommendation_dislikes = db.execute(
             "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='recommendation' AND rating=-1"
+            + (" AND created_at >= ?" if since else ""), params
         ).fetchone()[0]
         similarity_likes = db.execute(
             "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='similarity' AND rating=1"
+            + (" AND created_at >= ?" if since else ""), params
         ).fetchone()[0]
         similarity_dislikes = db.execute(
             "SELECT COUNT(*) FROM user_feedback WHERE feedback_type='similarity' AND rating=-1"
+            + (" AND created_at >= ?" if since else ""), params
         ).fetchone()[0]
-        total_clicks = db.execute("SELECT COUNT(*) FROM button_click_metrics").fetchone()[0]
-        total_store_views = db.execute("SELECT COUNT(*) FROM store_page_views").fetchone()[0]
-        total_searches = db.execute("SELECT COUNT(*) FROM search_analytics").fetchone()[0]
+        total_clicks = db.execute(
+            f"SELECT COUNT(*) FROM button_click_metrics{where}", params
+        ).fetchone()[0]
+        total_store_views = db.execute(
+            f"SELECT COUNT(*) FROM store_page_views{where}", params
+        ).fetchone()[0]
+        total_searches = db.execute(
+            f"SELECT COUNT(*) FROM search_analytics{where}", params
+        ).fetchone()[0]
         button_counts = {
             row["button_name"]: row["cnt"]
             for row in db.execute(
-                "SELECT button_name, COUNT(*) AS cnt FROM button_click_metrics GROUP BY button_name"
+                f"SELECT button_name, COUNT(*) AS cnt FROM button_click_metrics{where} GROUP BY button_name",
+                params,
             ).fetchall()
         }
+        distinct_visitors = db.execute(
+            """SELECT COUNT(DISTINCT client_id) FROM (
+                SELECT client_id, created_at FROM search_analytics
+                UNION ALL SELECT client_id, created_at FROM store_page_views
+                UNION ALL SELECT client_id, created_at FROM button_click_metrics
+            ) WHERE client_id IS NOT NULL""" + (" AND created_at >= ?" if since else ""),
+            params,
+        ).fetchone()[0]
         recent_searches = [
             dict(row)
             for row in db.execute(
                 """SELECT query, resolved_from_url, result_count, used_llm, created_at, client_id
-                FROM search_analytics ORDER BY created_at DESC LIMIT 30"""
+                FROM search_analytics""" + where + " ORDER BY created_at DESC LIMIT 30",
+                params,
             ).fetchall()
         ]
         recent_feedback = [
             dict(row)
             for row in db.execute(
                 """SELECT feedback_type, rating, target_url, user_id, client_id, created_at
-                FROM user_feedback ORDER BY created_at DESC LIMIT 50"""
+                FROM user_feedback""" + where + " ORDER BY created_at DESC LIMIT 50",
+                params,
             ).fetchall()
         ]
         recent_clicks = [
             dict(row)
             for row in db.execute(
                 """SELECT button_name, product_id, store_id, product_url, user_id, client_id, created_at
-                FROM button_click_metrics ORDER BY created_at DESC LIMIT 50"""
+                FROM button_click_metrics""" + where + " ORDER BY created_at DESC LIMIT 50",
+                params,
             ).fetchall()
         ]
+        activity: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"searches": 0, "views": 0, "clicks": 0}
+        )
+        for table, key in (
+            ("search_analytics", "searches"),
+            ("store_page_views", "views"),
+            ("button_click_metrics", "clicks"),
+        ):
+            for row in db.execute(
+                f"SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS count FROM {table}{where} GROUP BY day ORDER BY day DESC LIMIT 14",
+                params,
+            ).fetchall():
+                activity[row["day"]][key] = row["count"]
+        activity_days = []
+        for day in sorted(activity)[-14:]:
+            item = {"day": day, **activity[day]}
+            item["total"] = item["searches"] + item["views"] + item["clicks"]
+            activity_days.append(item)
+        max_activity = max((item["total"] for item in activity_days), default=1)
+    positive_feedback = recommendation_likes + similarity_likes
+    positive_rate = round(positive_feedback * 100 / total_feedback) if total_feedback else 0
+    intent_clicks = sum(
+        button_counts.get(name, 0)
+        for name in ("use_recommended_price", "update_price_basalam", "set_price_basalam_merchant")
+    )
+    action_rate = round(intent_clicks * 100 / total_searches) if total_searches else 0
     return templates.TemplateResponse(
         request=request,
         name="admin/metrics.html",
@@ -898,6 +971,12 @@ def admin_metrics_page(request: Request) -> HTMLResponse:
             "recent_searches": recent_searches,
             "recent_feedback": recent_feedback,
             "recent_clicks": recent_clicks,
+            "selected_period": days,
+            "distinct_visitors": distinct_visitors,
+            "positive_rate": positive_rate,
+            "action_rate": action_rate,
+            "activity_days": activity_days,
+            "max_activity": max_activity,
         },
     )
 
