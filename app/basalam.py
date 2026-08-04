@@ -458,7 +458,11 @@ _PUBLIC_HEADERS = {
 async def fetch_basalam_product(product_id: int) -> dict[str, Any]:
     """Fetch full product details from Basalam (public endpoint when possible)."""
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(
+            timeout=20,
+            follow_redirects=True,
+            trust_env=settings.marketplace_trust_env,
+        ) as client:
             url = f"{basalam.api_base}/products/{product_id}"
             response = await client.get(url, headers=_PUBLIC_HEADERS)
             if response.status_code == 200:
@@ -481,21 +485,18 @@ async def fetch_basalam_product(product_id: int) -> dict[str, Any]:
     except (httpx.HTTPError, ValueError, TypeError) as exc:
         logger.warning("Basalam product API fetch failed for %s: %s", product_id, exc)
 
-    html_title = await _fetch_product_title(product_id)
-    if html_title:
-        return {
-            "title": html_title,
-            "description": "",
-            "brand": "",
-            "price": 0,
-            "image_url": "",
-            "specs": {},
-            "product_id": product_id,
-        }
+    html_details = await _fetch_product_details(product_id)
+    if html_details.get("title"):
+        return {**html_details, "price": 0, "product_id": product_id}
     return {}
 
 
 async def _fetch_product_title(product_id: int) -> str:
+    details = await _fetch_product_details(product_id)
+    return str(details.get("title", ""))
+
+
+async def _fetch_product_details(product_id: int) -> dict[str, Any]:
     url = f"https://basalam.com/p/{product_id}"
     headers = {
         "Accept": "text/html,application/xhtml+xml",
@@ -504,20 +505,23 @@ async def _fetch_product_title(product_id: int) -> str:
     }
     timeout = httpx.Timeout(12, connect=7)
     async with httpx.AsyncClient(
-        headers=headers, timeout=timeout, follow_redirects=True
+        headers=headers,
+        timeout=timeout,
+        follow_redirects=True,
+        trust_env=settings.marketplace_trust_env,
     ) as client:
         response = await client.get(url)
         response.raise_for_status()
         content_type = response.headers.get("content-type", "").lower()
         if "html" not in content_type:
-            return ""
+            return {}
         parser = _BasalamProductHTMLParser()
         parser.feed(response.text)
         details = parser.product_details()
         title = details.get("title", "")
         if not title or title.lower() in {"باسلام", "basalam"}:
-            return ""
-        return title
+            return {}
+        return details
 
 
 def _flatten_basalam_specs(params: list[Any]) -> dict[str, str]:

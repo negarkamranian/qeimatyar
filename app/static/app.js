@@ -100,12 +100,15 @@ function applySliderMarkerLayout() {
 
 async function fetchSampleProducts() {
   const container = document.querySelector("#sample-products");
-  if (!container) return;
+  const list = document.querySelector("#sample-product-list");
+  if (!container || !list) return;
   try {
     const response = await fetch("/api/sample-products");
     if (!response.ok) return;
     const body = await response.json();
-    const products = body.products || [];
+    const products = (body.products || []).filter(product => product.url).slice(0, 5);
+    if (!products.length) return;
+    list.replaceChildren();
     products.forEach(product => {
       const image = product.image_url
         ? escapeHtml(product.image_url)
@@ -116,13 +119,15 @@ async function fetchSampleProducts() {
       const card = document.createElement("button");
       card.type = "button";
       card.className = "sample-product-card";
-      card.innerHTML = `${imageNode}<strong title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</strong>`;
+      const title = product.title || "محصول نمونه باسلام";
+      card.innerHTML = `${imageNode}<strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>`;
       card.addEventListener("click", () => {
         document.querySelector("#product-name").value = product.url;
         analyze(product.url);
       });
-      container.appendChild(card);
+      list.appendChild(card);
     });
+    container.hidden = false;
   } catch {
     // best-effort: fall back to no sample cards
   }

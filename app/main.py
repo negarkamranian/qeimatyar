@@ -577,12 +577,11 @@ search_rate_limiter = SearchRateLimiter()
 
 
 SAMPLE_PRODUCT_URLS = [
-    "https://basalam.com/2sotshop/product/2606888",
-    "https://basalam.com/bookmarkett/product/17272424",
-    "https://basalam.com/baneh_makeup/product/21037201",
-    "https://basalam.com/alirezahoseinpor/product/14719190",
-    "https://basalam.com/pantea_shoes/product/9052937",
-    "https://basalam.com/khoshechin/product/932142",
+    "https://basalam.com/essencegallery/product/25289339",
+    "https://basalam.com/rudika-com/product/33702253",
+    "https://basalam.com/nakhl_zivar/product/1967705",
+    "https://basalam.com/ketab_dabiran/product/19832064",
+    "https://basalam.com/aryapetrol/product/36657854",
 ]
 
 

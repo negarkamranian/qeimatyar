@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20260804-5">
+  <link rel="stylesheet" href="/static/app.css?v=20260804-6">
 </head>
 <body>
   <header class="site-header">
@@ -54,7 +54,10 @@
           >
           <button type="submit">بررسی قیمت</button>
         </div>
-
+        <div id="sample-products" class="sample-products" hidden>
+          <span class="sample-products-label">یا با یکی از این محصولات شروع کن</span>
+          <div id="sample-product-list" class="sample-product-list"></div>
+        </div>
       </form>
 
       <div class="trust-row" aria-label="منابع قیمت">
@@ -239,6 +242,6 @@
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260804-3" defer></script>
+  <script src="/static/app.js?v=20260804-4" defer></script>
 </body>
 </html>
