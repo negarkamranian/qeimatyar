@@ -28,7 +28,9 @@ function escapeHtml(value) {
 
 function safeUrl(value) {
   try {
-    const url = new URL(value);
+    const normalized = String(value || "").startsWith("//") ? `https:${value}` : value;
+    const url = new URL(normalized);
+    if (url.protocol === "http:") url.protocol = "https:";
     return url.protocol === "https:" ? escapeHtml(url.href) : "";
   } catch {
     return "";
@@ -251,11 +253,11 @@ function renderResult(data) {
     const href = safeUrl(item.url);
     const image = safeUrl(item.image_url);
     const imageNode = image
-      ? `<img class="listing-image" src="${image}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+      ? `<img class="listing-image" src="${image}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="image-placeholder" hidden>◇</span>`
       : `<span class="image-placeholder">◇</span>`;
     const similarityPct = Math.round(Number(item.llm_similarity ?? item.similarity) * 100);
     const simClass = similarityPct >= 80 ? "high" : similarityPct >= 50 ? "mid" : "low";
-    const simLabel = item.llm_similarity != null ? "امتیاز LLM" : "٪ شباهت";
+    const simLabel = "شباهت";
     const listingKey = encodeURIComponent(href);
     return `<article class="listing-card" data-listing="${listingKey}" data-url="${href}">
       ${imageNode}
@@ -457,7 +459,7 @@ async function removeComparable(url) {
 function swipeCardMarkup(item, position) {
   const image = safeUrl(item.image_url);
   const imageNode = image
-    ? `<img src="${image}" alt="" draggable="false" referrerpolicy="no-referrer">`
+    ? `<img src="${image}" alt="" draggable="false" decoding="async" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="swipe-image-placeholder" hidden>◇</span>`
     : `<span class="swipe-image-placeholder">◇</span>`;
   return `<article class="swipe-card${position ? " behind" : ""}" data-swipe-url="${safeUrl(item.url)}">
     <span class="swipe-verdict reject">نامرتبط</span>
@@ -470,10 +472,20 @@ function swipeCardMarkup(item, position) {
 function setupSwipeReview() {
   const panel = document.querySelector("#swipe-review");
   const deck = document.querySelector("#swipe-deck");
+  const complete = document.querySelector("#swipe-complete");
+  const actions = panel.querySelector(".swipe-actions");
   const listings = currentAnalysis?.analysis?.listings || [];
   swipeReviewItems = listings.filter(item => !reviewedListingUrls.has(item.url)).slice(0, 5);
-  panel.hidden = swipeReviewItems.length === 0;
-  if (!swipeReviewItems.length) return;
+  panel.hidden = listings.length === 0;
+  if (!listings.length) return;
+  if (!swipeReviewItems.length) {
+    deck.innerHTML = "";
+    complete.hidden = false;
+    actions.hidden = true;
+    return;
+  }
+  complete.hidden = true;
+  actions.hidden = false;
 
   deck.innerHTML = swipeReviewItems.slice(0, 2).reverse().map((item, reverseIndex, shown) =>
     swipeCardMarkup(item, reverseIndex < shown.length - 1)

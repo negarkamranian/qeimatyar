@@ -51,6 +51,7 @@ def test_torob_parser_keeps_toman_price():
 
 
 def test_digikala_parser_converts_rial_to_toman():
+    image_url = "https://dkstatics-public.digikala.com/product.jpg"
     payload = {
         "data": {
             "products": [
@@ -58,7 +59,7 @@ def test_digikala_parser_converts_rial_to_toman():
                     "title_fa": "کاور آیفون",
                     "url": {"uri": "/product/dkp-1/"},
                     "default_variant": {"price": {"selling_price": 255_000_000}},
-                    "images": {},
+                    "images": {"main": {"url": [image_url]}},
                 }
             ]
         }
@@ -66,6 +67,7 @@ def test_digikala_parser_converts_rial_to_toman():
     result = parse_digikala(payload, "کاور آیفون")
     assert result[0].price == 25_500_000
     assert result[0].source == "digikala"
+    assert result[0].image_url == image_url
 
 
 def test_basalam_parser_accepts_list_payload():

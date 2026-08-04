@@ -102,12 +102,30 @@ def title_similarity(query: str, title: str) -> float:
 
 def _first_image(value: Any) -> str:
     if isinstance(value, str):
-        return value
-    if isinstance(value, list) and value:
-        return str(value[0])
+        image = value.strip()
+        return f"https:{image}" if image.startswith("//") else image
+    if isinstance(value, list):
+        for item in value:
+            found = _first_image(item)
+            if found:
+                return found
     if isinstance(value, dict):
-        for key in ("url", "webp_url", "original", "md", "MEDIUM", "SMALL"):
+        for key in (
+            "main",
+            "url",
+            "webp_url",
+            "thumbnail_url",
+            "original",
+            "md",
+            "lg",
+            "MEDIUM",
+            "SMALL",
+        ):
             found = _first_image(value.get(key))
+            if found:
+                return found
+        for nested in value.values():
+            found = _first_image(nested)
             if found:
                 return found
     return ""

@@ -312,6 +312,18 @@ h1, h2, p { margin-top: 0; }
 .summary-grid small, .summary-grid strong { display: block; }
 .summary-grid small { color: var(--muted); font-size: 9px; margin-bottom: 2px; }
 .summary-grid strong { font-size: 10px; }
+.selected-price strong,
+.recommendation strong,
+.slider-prices,
+.summary-grid strong,
+.listing-info b,
+.listing-grid .sim-badge,
+.swipe-card b,
+#merchant-current-price {
+  font-family: Tahoma, Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
 
 .matches { margin-top: 28px; }
 .section-head { display: flex; justify-content: space-between; align-items: end; margin-bottom: 13px; }
@@ -343,13 +355,13 @@ h1, h2, p { margin-top: 0; }
 .matching-column-head .eyebrow { margin-bottom: 3px; }
 .matching-column-head h2 { margin: 0 0 3px; font-size: 16px; }
 .matching-column-head p { margin: 0; color: var(--muted); font-size: 9px; }
-.swipe-review { display: grid; grid-template-rows: 1fr auto; min-height: 360px; }
-.swipe-stage { position: relative; min-height: 300px; direction: ltr; }
+.swipe-review { display: grid; grid-template-rows: 1fr auto; min-height: 300px; }
+.swipe-stage { position: relative; min-height: 240px; direction: ltr; }
 .swipe-deck { position: absolute; inset: 0; display: grid; place-items: center; }
-.swipe-card { --accept-opacity: 0; --reject-opacity: 0; position: absolute; z-index: 2; width: min(94%, 390px); min-height: 210px; padding: 15px; display: grid; grid-template-columns: 125px 1fr; gap: 15px; align-items: center; direction: rtl; border: 1px solid #d9e1de; border-radius: 14px; background: #fff; box-shadow: 0 15px 35px rgba(30,49,43,.12); cursor: grab; user-select: none; touch-action: none; transition: transform .22s ease, opacity .22s ease; }
+.swipe-card { --accept-opacity: 0; --reject-opacity: 0; position: absolute; z-index: 2; width: min(94%, 390px); min-height: 172px; padding: 13px; display: grid; grid-template-columns: 110px 1fr; gap: 13px; align-items: center; direction: rtl; border: 1px solid #d9e1de; border-radius: 14px; background: #fff; box-shadow: 0 15px 35px rgba(30,49,43,.12); cursor: grab; user-select: none; touch-action: none; transition: transform .22s ease, opacity .22s ease; }
 .swipe-card.dragging { cursor: grabbing; transition: none; }
 .swipe-card.behind { z-index: 1; transform: translateY(8px) scale(.96); opacity: .58; pointer-events: none; }
-.swipe-card > img, .swipe-image-placeholder { width: 125px; height: 150px; object-fit: cover; border-radius: 10px; background: var(--paper); }
+.swipe-card > img, .swipe-image-placeholder { width: 110px; height: 125px; object-fit: contain; border-radius: 10px; background: var(--paper); }
 .swipe-image-placeholder { display: grid; place-items: center; color: #9ca8a4; font-size: 24px; }
 .swipe-card strong, .swipe-card b, .swipe-card small { display: block; }
 .swipe-card strong { font-size: 12px; line-height: 1.8; }
@@ -366,6 +378,10 @@ h1, h2, p { margin-top: 0; }
 .swipe-action.reject { color: var(--red); border-color: #f2c8cf; }
 .swipe-action.accept { color: var(--green); border-color: #b9d8cf; }
 .swipe-action:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(30,49,43,.09); }
+.swipe-complete { position: absolute; inset: 18px; display: grid; place-content: center; justify-items: center; direction: rtl; text-align: center; color: var(--muted); }
+.swipe-complete > span { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 10px; border-radius: 50%; background: #dff3eb; color: var(--green); font-size: 20px; font-weight: 800; }
+.swipe-complete strong { color: var(--ink); font-size: 13px; }
+.swipe-complete p { margin: 5px 0 0; font-size: 9px; }
 .disclaimer { margin: 25px auto 0; padding: 13px 16px; background: #fff9eb; color: #776440; border: 1px solid #f0dfb5; border-radius: 9px; font-size: 10px; line-height: 1.8; }
 
 .error-view > span { width: 55px; height: 55px; display: grid; place-items: center; border-radius: 50%; background: #fff0f2; color: var(--red); font-size: 28px; font-weight: 800; margin-bottom: 17px; }
@@ -379,7 +395,7 @@ footer p { margin: 0; }
 
 @media (max-width: 950px) {
   .analysis-workspace { grid-template-columns: 1fr; }
-  .matching-column { min-height: 410px; }
+  .matching-column { min-height: 340px; }
 }
 
 @media (max-width: 700px) {
@@ -413,9 +429,9 @@ footer p { margin: 0; }
   .listing-grid { grid-template-columns: 1fr; }
   .listing-card:nth-child(n+5) { display: none; }
   .listing-grid.expanded .listing-card { display: flex; }
-  .matching-column { min-height: 380px; padding: 15px; }
-  .swipe-review { min-height: 315px; }
-  .swipe-stage { min-height: 260px; }
-  .swipe-card { min-height: 190px; grid-template-columns: 105px 1fr; }
-  .swipe-card > img, .swipe-image-placeholder { width: 105px; height: 130px; }
+  .matching-column { min-height: 340px; padding: 15px; }
+  .swipe-review { min-height: 275px; }
+  .swipe-stage { min-height: 220px; }
+  .swipe-card { min-height: 165px; grid-template-columns: 100px 1fr; }
+  .swipe-card > img, .swipe-image-placeholder { width: 100px; height: 120px; }
 }

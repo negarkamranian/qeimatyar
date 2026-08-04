@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20260804-2">
+  <link rel="stylesheet" href="/static/app.css?v=20260804-3">
 </head>
 <body>
   <header class="site-header">
@@ -195,6 +195,11 @@
           <div id="swipe-review" class="swipe-review" hidden>
             <div class="swipe-stage" aria-live="polite">
               <div id="swipe-deck" class="swipe-deck"></div>
+              <div id="swipe-complete" class="swipe-complete" hidden>
+                <span aria-hidden="true">✓</span>
+                <strong>محصول دیگری برای بررسی نمانده</strong>
+                <p>ممنون از بازخوردت؛ نتیجه‌ها دقیق‌تر شدند.</p>
+              </div>
             </div>
             <div class="swipe-actions">
               <button id="swipe-reject" class="swipe-action reject" type="button"><span aria-hidden="true">←</span> نامرتبط</button>
@@ -237,6 +242,6 @@
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260804-2" defer></script>
+  <script src="/static/app.js?v=20260804-3" defer></script>
 </body>
 </html>
