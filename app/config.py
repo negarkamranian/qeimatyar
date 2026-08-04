@@ -10,6 +10,17 @@ def _bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).lower() in {"1", "true", "yes", "on"}
 
 
+def _positive_float(name: str) -> float | None:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return None
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
 class Settings:
     def __init__(self) -> None:
         self.app_env: str = os.getenv("APP_ENV", "development")
@@ -31,6 +42,10 @@ class Settings:
         self.cron_secret: str = os.getenv("CRON_SECRET", "")
         self.demo_mode: bool = _bool("DEMO_MODE", True)
         self.marketplace_trust_env: bool = _bool("MARKETPLACE_TRUST_ENV", False)
+        # Optional toman-per-unit overrides. When omitted, MENA marketplace
+        # prices use live USD rates combined with the Nobitex USDT/IRT rate.
+        self.try_toman_rate: float | None = _positive_float("TRY_TOMAN_RATE")
+        self.aed_toman_rate: float | None = _positive_float("AED_TOMAN_RATE")
         self.merchant_product_limit: int = int(os.getenv("MERCHANT_PRODUCT_LIMIT", "50"))
         self.merchant_sync_hours: int = int(os.getenv("MERCHANT_SYNC_HOURS", "6"))
         self.usdt_notification_enabled: bool = _bool("USDT_NOTIFICATION_ENABLED", True)

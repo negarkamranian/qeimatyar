@@ -36,6 +36,22 @@ def test_untrusted_product_link_is_rejected():
         asyncio.run(resolve_product_query("https://example.com/product/123"))
 
 
+def test_trendyol_and_noon_product_links_are_allowed(monkeypatch):
+    async def fake_html(value):
+        marketplace = "Trendyol" if "trendyol" in value else "Noon"
+        return f'<meta property="og:title" content="Apple iPhone 15 | {marketplace}">'
+
+    monkeypatch.setattr("app.product_input._fetch_product_html", fake_html)
+    trendyol = asyncio.run(
+        resolve_product_query("https://www.trendyol.com/apple/iphone-15-p-123")
+    )
+    noon = asyncio.run(
+        resolve_product_query("https://www.noon.com/uae-en/apple-iphone-15/N123/p/")
+    )
+    assert trendyol == ("Apple iPhone 15", True)
+    assert noon == ("Apple iPhone 15", True)
+
+
 def test_basalam_product_id_is_read_from_link():
     assert basalam_product_id_from_url("https://basalam.com/p/456?ref=search") == 456
     assert basalam_product_id_from_url("https://www.basalam.com/product/789") == 789

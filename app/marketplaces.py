@@ -11,11 +11,25 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.config import settings
+from app.nobitex import nobitex
 
 
 TOROB_SEARCH_URL = "https://api.torob.com/v4/base-product/search/"
 DIGIKALA_SEARCH_URL = "https://api.digikala.com/v1/search/"
 BASALAM_SEARCH_URL = "https://openapi.basalam.com/v1/products/search"
+TRENDYOL_SEARCH_URL = (
+    "https://public.trendyol.com/discovery-web-searchgw-service/v2/api/infinite-scroll/sr"
+)
+NOON_SEARCH_URL = "https://www.noon.com/_vs/nc/mp-customer-catalog-api/api/v3/u/search/"
+USD_RATES_URL = "https://open.er-api.com/v6/latest/USD"
+
+MARKETPLACE_SOURCES = (
+    "torob",
+    "digikala",
+    "basalam",
+    "trendyol",
+    "noon_uae",
+)
 
 _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _STOP_WORDS = {
@@ -42,6 +56,8 @@ class MarketListing:
     image_url: str = ""
     similarity: float = 0
     external_id: str = ""
+    native_price: float | None = None
+    native_currency: str = ""
 
     def public_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -205,6 +221,230 @@ def parse_basalam(payload: Any, query: str) -> list[MarketListing]:
     return listings
 
 
+def _nested_items(payload: Any, paths: tuple[tuple[str, ...], ...]) -> list[dict[str, Any]]:
+    for path in paths:
+        value = payload
+        for key in path:
+            if not isinstance(value, dict):
+                value = None
+                break
+            value = value.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, (int, float)) and value > 0:
+        return float(value)
+    if isinstance(value, str):
+        cleaned = re.sub(r"[^0-9.,]", "", value).strip()
+        if not cleaned:
+            return None
+        if "," in cleaned and "." in cleaned:
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        elif "," in cleaned:
+            tail = cleaned.rsplit(",", 1)[-1]
+            cleaned = cleaned.replace(",", "." if len(tail) <= 2 else "")
+        try:
+            parsed = float(cleaned)
+        except ValueError:
+            return None
+        return parsed if parsed > 0 else None
+    return None
+
+
+def parse_trendyol(
+    payload: dict[str, Any],
+    query: str,
+    toman_per_try: float,
+) -> list[MarketListing]:
+    products = _nested_items(
+        payload,
+        (
+            ("result", "products"),
+            ("result", "content", "products"),
+            ("data", "products"),
+            ("products",),
+        ),
+    )
+    listings: list[MarketListing] = []
+    for item in products:
+        title = (item.get("name") or item.get("title") or "").strip()
+        price_data = item.get("price") or {}
+        if not isinstance(price_data, dict):
+            price_data = {}
+        discounted = price_data.get("discountedPrice") or {}
+        if not isinstance(discounted, dict):
+            discounted = {}
+        native_price = _number(
+            discounted.get("value")
+            or price_data.get("sellingPrice")
+            or price_data.get("salePrice")
+            or item.get("salePrice")
+            or item.get("price")
+        )
+        if not title or native_price is None:
+            continue
+        path = item.get("url") or item.get("productUrl") or ""
+        url = str(path) if str(path).startswith("http") else f"https://www.trendyol.com{path}"
+        product_id = item.get("id") or item.get("productId") or item.get("contentId")
+        listings.append(
+            MarketListing(
+                source="trendyol",
+                title=title,
+                price=max(1, round(native_price * toman_per_try)),
+                url=url,
+                image_url=_first_image(item.get("images") or item.get("image")),
+                similarity=title_similarity(query, title),
+                external_id=str(product_id) if product_id is not None else "",
+                native_price=native_price,
+                native_currency="TRY",
+            )
+        )
+    return listings
+
+
+def parse_noon(
+    payload: dict[str, Any],
+    query: str,
+    *,
+    source: str,
+    currency: str,
+    toman_per_unit: float,
+) -> list[MarketListing]:
+    products = _nested_items(
+        payload,
+        (
+            ("hits",),
+            ("data", "hits"),
+            ("data", "products"),
+            ("results",),
+            ("products",),
+        ),
+    )
+    listings: list[MarketListing] = []
+    for item in products:
+        title = (item.get("name") or item.get("title") or item.get("product_title") or "").strip()
+        price_data = item.get("price") or {}
+        if not isinstance(price_data, dict):
+            price_data = {}
+        native_price = _number(
+            item.get("sale_price")
+            or item.get("price")
+            or price_data.get("sale_price")
+            or price_data.get("value")
+            or item.get("offer_price")
+        )
+        if not title or native_price is None:
+            continue
+        sku = item.get("sku") or item.get("catalog_sku") or item.get("id")
+        path = str(item.get("url") or item.get("product_url") or "")
+        if path.startswith("http"):
+            url = path
+        elif path.startswith("/"):
+            url = f"https://www.noon.com{path}"
+        elif path and sku:
+            locale = {"noon_uae": "uae-en"}.get(source, "uae-en")
+            url = f"https://www.noon.com/{locale}/{path.strip('/')}/{sku}/p/"
+        elif sku:
+            url = f"https://www.noon.com/uae-en/{sku}/p/"
+        else:
+            url = "https://www.noon.com"
+        listings.append(
+            MarketListing(
+                source=source,
+                title=title,
+                price=max(1, round(native_price * toman_per_unit)),
+                url=url,
+                image_url=_first_image(item.get("image_url") or item.get("image") or item.get("images")),
+                similarity=title_similarity(query, title),
+                external_id=str(sku) if sku is not None else "",
+                native_price=native_price,
+                native_currency=currency,
+            )
+        )
+    return listings
+
+
+def ensure_noon_uae(payload: dict[str, Any]) -> None:
+    """Reject a response that explicitly identifies a non-UAE Noon storefront.
+
+    Noon's customer catalog endpoint selects its storefront from the caller's
+    public egress IP and normally defaults unknown locations to UAE. Most
+    responses do not include a country field, so absence is accepted; an
+    explicit country/currency mismatch is not.
+    """
+    search = payload.get("search") or {}
+    if not isinstance(search, dict):
+        search = {}
+    explicit_values = {
+        str(value).strip().lower()
+        for value in (
+            payload.get("country"),
+            payload.get("country_code"),
+            payload.get("currency"),
+            payload.get("locale"),
+            search.get("country"),
+            search.get("country_code"),
+            search.get("currency"),
+            search.get("locale"),
+        )
+        if value
+    }
+    uae_values = {"ae", "uae", "united arab emirates", "aed", "en-ae", "ar-ae"}
+    non_uae_values = {
+        "sa", "ksa", "saudi", "saudi arabia", "sar", "en-sa", "ar-sa",
+        "eg", "egypt", "egp", "en-eg", "ar-eg",
+    }
+    if explicit_values & non_uae_values and not explicit_values & uae_values:
+        raise ValueError("پاسخ نون مربوط به بازار امارات نیست")
+
+
+class CurrencyConverter:
+    """Convert MENA storefront currencies to toman with a short-lived cache."""
+
+    def __init__(self, cache_seconds: int = 1800) -> None:
+        self.cache_seconds = cache_seconds
+        self._cache: tuple[float, dict[str, float]] | None = None
+        self._lock = asyncio.Lock()
+
+    async def toman_rate(self, currency: str, client: httpx.AsyncClient) -> float:
+        override = getattr(settings, f"{currency.lower()}_toman_rate", None)
+        if override:
+            return float(override)
+        rates = await self._live_rates(client)
+        try:
+            return rates[currency]
+        except KeyError as exc:
+            raise ValueError(f"نرخ تبدیل {currency} در دسترس نیست") from exc
+
+    async def _live_rates(self, client: httpx.AsyncClient) -> dict[str, float]:
+        cached = self._cache
+        if cached and time.monotonic() - cached[0] < self.cache_seconds:
+            return cached[1]
+        async with self._lock:
+            cached = self._cache
+            if cached and time.monotonic() - cached[0] < self.cache_seconds:
+                return cached[1]
+            fx_response, usdt_rate = await asyncio.gather(
+                client.get(USD_RATES_URL),
+                nobitex.usdt_irt_rate(),
+            )
+            fx_response.raise_for_status()
+            payload = fx_response.json()
+            usd_rates = payload.get("rates") or {}
+            converted: dict[str, float] = {}
+            for currency in ("TRY", "AED"):
+                units_per_usd = _number(usd_rates.get(currency))
+                if units_per_usd:
+                    converted[currency] = usdt_rate.price_toman / units_per_usd
+            if len(converted) != 2:
+                raise ValueError("پاسخ سرویس نرخ ارز کامل نیست")
+            self._cache = (time.monotonic(), converted)
+            return converted
+
+
 def exclude_marketplace_product(
     listings: list[MarketListing],
     source: str,
@@ -232,6 +472,7 @@ class MarketCrawler:
         self.cache_seconds = cache_seconds
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
+        self._currencies = CurrencyConverter()
 
     async def search(self, query: str, user_states=None) -> dict[str, Any]:
         key = normalize_text(query)
@@ -258,13 +499,14 @@ class MarketCrawler:
                 self._torob(client, query),
                 self._digikala(client, query),
                 self._basalam(client, query),
+                self._trendyol(client, query),
+                self._noon(client, query),
             ]
             outcomes = await asyncio.gather(*tasks, return_exceptions=True)
 
         listings: list[MarketListing] = []
         statuses: list[SourceStatus] = []
-        sources = ("torob", "digikala", "basalam")
-        for source, outcome in zip(sources, outcomes, strict=True):
+        for source, outcome in zip(MARKETPLACE_SOURCES, outcomes, strict=True):
             if isinstance(outcome, Exception):
                 statuses.append(SourceStatus(source, False, 0, "دسترسی موقتاً ناموفق بود"))
                 continue
@@ -318,6 +560,37 @@ class MarketCrawler:
             json={"q": query, "rows": 24, "start": 0},
         )
         return parse_basalam(payload, query)
+
+    async def _trendyol(self, client: httpx.AsyncClient, query: str) -> list[MarketListing]:
+        payload = await self._request_json(
+            client,
+            "GET",
+            TRENDYOL_SEARCH_URL,
+            params={"q": query, "pi": 1, "culture": "tr-TR", "channelId": 1},
+        )
+        rate = await self._currencies.toman_rate("TRY", client)
+        return parse_trendyol(payload, query, rate)
+
+    async def _noon(
+        self,
+        client: httpx.AsyncClient,
+        query: str,
+    ) -> list[MarketListing]:
+        payload = await self._request_json(
+            client,
+            "GET",
+            NOON_SEARCH_URL,
+            params={"q": query, "limit": 24, "page": 1},
+        )
+        ensure_noon_uae(payload)
+        rate = await self._currencies.toman_rate("AED", client)
+        return parse_noon(
+            payload,
+            query,
+            source="noon_uae",
+            currency="AED",
+            toman_per_unit=rate,
+        )
 
     async def _request_json(
         self,
@@ -433,7 +706,7 @@ def analyze_listings(
 
     counts = {
         source: sum(1 for item in retained if item.source == source)
-        for source in ("torob", "digikala", "basalam")
+        for source in MARKETPLACE_SOURCES
     }
     elasticity = _estimate_elasticity(int(fair), int(fair), int(quick), int(patient))
 

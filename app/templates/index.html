@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
-  <title>قیمت‌یار — قیمت مناسب محصولت را پیدا کن</title>
+  <title>دقیقه — قیمت مناسب محصولت را پیدا کن</title>
   <meta name="description" content="مقایسه قیمت محصول در ترب، دیجی‌کالا و باسلام و پیشنهاد بازه مناسب فروش">
   <link rel="icon" type="image/jpeg" href="/static/logo.jpg" sizes="any">
   <link rel="shortcut icon" href="/static/logo.jpg" sizes="any">
@@ -12,16 +12,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20260804-7">
+  <link rel="stylesheet" href="/static/app.css?v=20260804-8">
 </head>
 <body>
   <header class="site-header">
     <a class="brand" href="/">
       <span class="brand-mark">
-        <img src="/static/logo.jpg" alt="قیمت‌یار" onload="this.nextElementSibling.hidden=true" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
+        <img src="/static/logo.jpg" alt="دقیقه" onload="this.nextElementSibling.hidden=true" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
         <span class="brand-mark-fallback">ق</span>
       </span>
-      <span><strong>قیمت‌یار</strong><small>پیشنهاد دهنده هوشمند قیمت</small></span>
+      <span><strong>دقیقه</strong><small>پیشنهاد دهنده هوشمند قیمت</small></span>
     </a>
     <nav class="header-links">
       <a class="merchant-link" href="{{ '/merchant' if merchant_connected else '/login' }}">
@@ -66,6 +66,8 @@
         <div><span class="source-logo"><img src="/static/digikala-logo.png" alt="لوگوی دیجی‌کالا"></span><strong>دیجی‌کالا</strong><small>قیمت خرده‌فروشی</small></div>
         <i></i>
         <div><span class="source-logo"><img src="/static/basalam-logo.png" alt="لوگوی باسلام"></span><strong>باسلام</strong><small>بازار محصولات ایرانی</small></div>
+        <i></i>
+        <div><span class="source-logo source-logo-text" aria-hidden="true">MENA</span><strong>ترندیول و نون</strong><small>بازارهای ترکیه و امارات</small></div>
       </div>
 
       <section id="method" class="method-note">
@@ -84,7 +86,7 @@
       <h2>در حال بررسی بازار…</h2>
       <p id="loading-product"></p>
       <div class="loading-sources">
-        <span>ترب</span><span>دیجی‌کالا</span><span>باسلام</span>
+        <span>ترب</span><span>دیجی‌کالا</span><span>باسلام</span><span>ترندیول</span><span>نون امارات</span>
       </div>
     </section>
 
@@ -140,7 +142,7 @@
 
         <div class="recommendation">
           <div>
-            <small>پیشنهاد قیمت‌یار</small>
+            <small>پیشنهاد دقیقه</small>
             <strong id="recommended-price">—</strong>
             <span>تومان</span>
           </div>
@@ -237,11 +239,11 @@
   </main>
 
   <footer>
-    <span>قیمت‌یار</span>
+    <span>دقیقه</span>
     <p>راهنمای قیمت‌گذاری؛ تصمیم نهایی همیشه با فروشنده است.</p>
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260804-5" defer></script>
+  <script src="/static/app.js?v=20260804-7" defer></script>
 </body>
 </html>

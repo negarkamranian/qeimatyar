@@ -4,7 +4,13 @@ const views = {
   result: document.querySelector("#result-view"),
   error: document.querySelector("#error-view"),
 };
-const sourceNames = { torob: "ترب", digikala: "دیجی‌کالا", basalam: "باسلام" };
+const sourceNames = {
+  torob: "ترب",
+  digikala: "دیجی‌کالا",
+  basalam: "باسلام",
+  trendyol: "ترندیول ترکیه",
+  noon_uae: "نون امارات",
+};
 let currentAnalysis = null;
 let currentSliderBands = null;
 let swipeReviewItems = [];
@@ -26,15 +32,19 @@ function escapeHtml(value) {
   })[character]);
 }
 
-function safeUrl(value) {
+function normalizeUrl(value) {
   try {
     const normalized = String(value || "").startsWith("//") ? `https:${value}` : value;
     const url = new URL(normalized);
     if (url.protocol === "http:") url.protocol = "https:";
-    return url.protocol === "https:" ? escapeHtml(url.href) : "";
+    return url.protocol === "https:" ? url.href : "";
   } catch {
     return "";
   }
+}
+
+function safeUrl(value) {
+  return escapeHtml(normalizeUrl(value));
 }
 
 function showView(name) {
@@ -425,7 +435,8 @@ function sendSimilarityFeedback(listing, rating) {
 async function removeComparable(url) {
   if (comparableUpdatePending) return false;
   const listings = currentAnalysis?.analysis?.listings || [];
-  const listing = listings.find(item => item.url === url);
+  const normalizedTarget = normalizeUrl(url);
+  const listing = listings.find(item => normalizeUrl(item.url) === normalizedTarget);
   if (!listing) return false;
   if (listings.length <= 3) {
     const progress = document.querySelector("#swipe-progress");
@@ -437,7 +448,7 @@ async function removeComparable(url) {
   document.querySelectorAll(".remove-listing-button").forEach(button => { button.disabled = true; });
   sendSimilarityFeedback(listing, -1);
   try {
-    const remaining = listings.filter(item => item.url !== url);
+    const remaining = listings.filter(item => item !== listing);
     const response = await fetch("/api/market/recalculate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -591,6 +602,23 @@ function computeElasticity(value, recommended, low, high) {
 
 const TOLERANCE = 0.01;
 
+function positionSaleSignal(position) {
+  const slider = document.querySelector("#price-slider");
+  const signal = document.querySelector("#sale-signal");
+  const trackWidth = slider.getBoundingClientRect().width;
+  const signalWidth = signal.getBoundingClientRect().width;
+  if (!trackWidth || !signalWidth) return;
+
+  const target = (position / 100) * trackWidth;
+  const halfSignal = signalWidth / 2;
+  const center = signalWidth >= trackWidth
+    ? trackWidth / 2
+    : Math.min(trackWidth - halfSignal, Math.max(halfSignal, target));
+  const pointer = Math.min(signalWidth - 12, Math.max(12, target - center + halfSignal));
+  signal.style.setProperty("--signal-left", `${center}px`);
+  signal.style.setProperty("--signal-pointer", `${pointer}px`);
+}
+
 function updateSelectedPrice() {
   if (!currentAnalysis) return;
   const slider = document.querySelector("#price-slider");
@@ -610,7 +638,6 @@ function updateSelectedPrice() {
   const demandChange = elasticity.demandChangePct;
   const revenueChange = elasticity.revenueChangePct;
   const distancePct = elasticity.distancePct;
-  signal.style.setProperty("--signal-position", `${position}%`);
   const selectedPriceEl = document.querySelector("#selected-price");
   selectedPriceEl.textContent = toman(value);
 
@@ -635,6 +662,7 @@ function updateSelectedPrice() {
     slider.style.setProperty("--thumb", "var(--red)");
     selectedPriceEl.style.color = "var(--red)";
   }
+  positionSaleSignal(position);
 
   const priceRisk = document.querySelector("#price-risk");
   const riskTitle = document.querySelector("#risk-title");
@@ -643,7 +671,7 @@ function updateSelectedPrice() {
   if (Math.abs(value - recommended) < TOLERANCE) {
     priceRisk.classList.add("good");
     riskTitle.textContent = "قیمت پیشنهادی بهینه";
-    riskCopy.textContent = "شما دقیقاً روی قیمت پیشنهادی قیمت‌یار هستید. در این نقطه، تعادل مناسبی بین تقاضا و درآمد حفظ می‌شود.";
+    riskCopy.textContent = "شما دقیقاً روی قیمت پیشنهادی دقیقه هستید. در این نقطه، تعادل مناسبی بین تقاضا و درآمد حفظ می‌شود.";
     selectedPriceEl.style.color = "var(--green)";
   } else if (value > recommended) {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
@@ -702,11 +730,20 @@ document.querySelector("#toggle-listings").addEventListener("click", event => {
 });
 document.querySelector("#listings").addEventListener("click", event => {
   const button = event.target.closest(".remove-listing-button");
-  if (button) removeComparable(button.dataset.removeUrl);
+  if (button) {
+    event.preventDefault();
+    event.stopPropagation();
+    removeComparable(button.dataset.removeUrl);
+  }
 });
 document.querySelector("#swipe-reject").addEventListener("click", () => completeSwipe(-1));
 document.querySelector("#swipe-accept").addEventListener("click", () => completeSwipe(1));
-window.addEventListener("resize", applySliderMarkerLayout);
+window.addEventListener("resize", () => {
+  applySliderMarkerLayout();
+  if (!currentAnalysis) return;
+  const slider = document.querySelector("#price-slider");
+  positionSaleSignal(percentageFor(Number(slider.value), Number(slider.min), Number(slider.max)));
+});
 
 const initialQuery = pageParams.get("q");
 if (initialQuery && initialQuery.trim().length >= 2) {

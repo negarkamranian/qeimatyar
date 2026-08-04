@@ -4,9 +4,12 @@ from app.marketplaces import (
     MarketCrawler,
     MarketListing,
     analyze_listings,
+    ensure_noon_uae,
     parse_basalam,
     parse_digikala,
+    parse_noon,
     parse_torob,
+    parse_trendyol,
     exclude_marketplace_product,
     title_similarity,
 )
@@ -87,14 +90,75 @@ def test_basalam_parser_accepts_live_products_envelope():
     assert len(result) == 1
 
 
+def test_trendyol_parser_converts_try_to_toman_and_preserves_native_price():
+    result = parse_trendyol(
+        {
+            "result": {
+                "products": [
+                    {
+                        "id": 123,
+                        "name": "Apple iPhone 15 128 GB",
+                        "url": "/apple/iphone-15-p-123",
+                        "image": "https://cdn.trendyol.com/iphone.jpg",
+                        "price": {"discountedPrice": {"value": 50000}},
+                    }
+                ]
+            }
+        },
+        "Apple iPhone 15 128 GB",
+        2_500,
+    )
+    assert result[0].price == 125_000_000
+    assert result[0].native_price == 50_000
+    assert result[0].native_currency == "TRY"
+    assert result[0].source == "trendyol"
+
+
+def test_noon_parser_supports_uae_search_hits():
+    result = parse_noon(
+        {
+            "hits": [
+                {
+                    "sku": "N123",
+                    "name": "Apple iPhone 15 128GB",
+                    "sale_price": 2500,
+                    "url": "apple-iphone-15",
+                    "image_url": "https://f.nooncdn.com/iphone.jpg",
+                }
+            ]
+        },
+        "Apple iPhone 15 128GB",
+        source="noon_uae",
+        currency="AED",
+        toman_per_unit=25_000,
+    )
+    assert result[0].price == 62_500_000
+    assert result[0].native_currency == "AED"
+    assert result[0].url == "https://www.noon.com/uae-en/apple-iphone-15/N123/p/"
+
+
+def test_noon_uae_guard_accepts_implicit_or_explicit_uae_payload():
+    ensure_noon_uae({"hits": []})
+    ensure_noon_uae({"country_code": "AE", "currency": "AED", "hits": []})
+
+
+def test_noon_uae_guard_rejects_explicit_non_uae_payload():
+    try:
+        ensure_noon_uae({"country": "sa", "currency": "SAR", "hits": []})
+    except ValueError as exc:
+        assert "امارات" in str(exc)
+    else:
+        raise AssertionError("Saudi Noon payload must not be treated as UAE/AED")
+
+
 def test_numeric_variant_mismatch_reduces_similarity():
     exact = title_similarity(
-        "کاور آیفون",
-        "کاور آیفون",
+        "کاور آیفون 15",
+        "کاور آیفون 15",
     )
     wrong_storage = title_similarity(
-        "کاور آیفون",
-        "کاور آیفون",
+        "کاور آیفون 15",
+        "کاور آیفون 14",
     )
     assert exact > wrong_storage
     assert exact > 0.45
@@ -134,6 +198,12 @@ def test_crawler_does_not_require_socks_for_environment_proxy(monkeypatch):
     monkeypatch.setattr(crawler, "_torob", no_results)
     monkeypatch.setattr(crawler, "_digikala", no_results)
     monkeypatch.setattr(crawler, "_basalam", no_results)
+    monkeypatch.setattr(crawler, "_trendyol", no_results)
+
+    async def no_noon_results(*_, **__):
+        return []
+
+    monkeypatch.setattr(crawler, "_noon", no_noon_results)
 
     result = asyncio.run(crawler.search("محصول آزمایشی"))
     assert result["raw_count"] == 0

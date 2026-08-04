@@ -15,6 +15,10 @@ ALLOWED_PRODUCT_HOSTS = {
     "www.torob.com",
     "digikala.com",
     "www.digikala.com",
+    "trendyol.com",
+    "www.trendyol.com",
+    "noon.com",
+    "www.noon.com",
 }
 MAX_HTML_BYTES = 750_000
 
@@ -74,7 +78,7 @@ def _validated_url(value: str) -> str:
         or port not in {None, 80, 443}
     ):
         raise ProductLinkError(
-            "فقط لینک محصول از باسلام، ترب یا دیجی‌کالا قابل بررسی است."
+            "فقط لینک محصول از باسلام، ترب، دیجی‌کالا، ترندیول یا نون قابل بررسی است."
         )
     return value
 
@@ -82,7 +86,7 @@ def _validated_url(value: str) -> str:
 def _clean_title(value: str) -> str:
     title = " ".join(value.split()).strip()
     title = re.sub(
-        r"\s*[|–—]\s*(?:دیجی‌کالا|ترب|باسلام).*$",
+        r"\s*[|–—]\s*(?:دیجی‌کالا|ترب|باسلام|ترندیول|نون|Trendyol|Noon).*$",
         "",
         title,
         flags=re.IGNORECASE,
@@ -175,7 +179,10 @@ async def resolve_product_query(value: str) -> tuple[str, bool]:
         title = _clean_title(parser.product_title())
     except (httpx.HTTPError, UnicodeError, ProductLinkError):
         title = fallback
-    if title.lower() in {"باسلام", "ترب", "دیجی‌کالا", "digikala", "torob"}:
+    if title.lower() in {
+        "باسلام", "ترب", "دیجی‌کالا", "ترندیول", "نون",
+        "digikala", "torob", "trendyol", "noon",
+    }:
         title = fallback
     if len(title) < 2:
         raise ProductLinkError(

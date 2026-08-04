@@ -54,7 +54,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="قیمت‌یار", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="دقیقه", version="0.2.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 
@@ -1341,7 +1341,7 @@ async def auth_callback(
             int(user["id"]),
             kind="booth_connected",
             title="غرفه شما وصل شد",
-            body="قیمت‌یار محصولات غرفه را دریافت می‌کند و پیشنهادهای قیمت را در همین داشبورد نشان می‌دهد.",
+            body="دقیقه محصولات غرفه را دریافت می‌کند و پیشنهادهای قیمت را در همین داشبورد نشان می‌دهد.",
             target_url="/merchant",
             metadata={"vendor_id": vendor["id"]},
         )
@@ -1703,7 +1703,7 @@ def dashboard() -> dict[str, Any]:
         for p in products
     )
     return {
-        "vendor": {"title": "غرفه نمونه قیمت‌یار" if settings.demo_mode else "غرفه متصل"},
+        "vendor": {"title": "غرفه نمونه دقیقه" if settings.demo_mode else "غرفه متصل"},
         "mode": "demo" if settings.demo_mode else "live",
         "metrics": {
             "products": len(products),

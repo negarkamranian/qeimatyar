@@ -2,7 +2,7 @@
 {% block title %}تست اتصال — پنل مدیریت{% endblock %}
 {% block content %}
 <h1>تست اتصال سرویس‌ها</h1>
-<p class="hint">وضعیت پیکربندی و تست اتصال به باسلام، ترب، دیجی‌کالا و AvalAI LLM.</p>
+<p class="hint">وضعیت پیکربندی و تست اتصال به بازارهای ایران و منطقه و AvalAI LLM.</p>
 
 <div class="summary-grid">
   <div class="summary-card">
@@ -44,6 +44,14 @@
   <div class="test-row">
     <button id="test-basalam-market" class="ghost-button">تست باسلام مارکت‌پلیس</button>
     <span id="result-basalam-market" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-trendyol" class="ghost-button">تست ترندیول ترکیه</button>
+    <span id="result-trendyol" class="test-result">—</span>
+  </div>
+  <div class="test-row">
+    <button id="test-noon-uae" class="ghost-button">تست نون امارات</button>
+    <span id="result-noon-uae" class="test-result">—</span>
   </div>
   <div class="test-row">
     <button id="test-llm" class="ghost-button">تست اتصال AvalAI LLM</button>
@@ -122,6 +130,8 @@ document.addEventListener("DOMContentLoaded", function() {
     {id: "test-torob", result: "result-torob", endpoint: "/admin/test/marketplace", source: "torob"},
     {id: "test-digikala", result: "result-digikala", endpoint: "/admin/test/marketplace", source: "digikala"},
     {id: "test-basalam-market", result: "result-basalam-market", endpoint: "/admin/test/marketplace", source: "basalam"},
+    {id: "test-trendyol", result: "result-trendyol", endpoint: "/admin/test/marketplace", source: "trendyol"},
+    {id: "test-noon-uae", result: "result-noon-uae", endpoint: "/admin/test/marketplace", source: "noon_uae"},
     {id: "test-llm", result: "result-llm", endpoint: "/admin/test/llm", hasPrompt: true},
   ];
   tests.forEach(t => {
