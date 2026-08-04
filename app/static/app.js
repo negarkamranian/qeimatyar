@@ -218,7 +218,12 @@ function renderResult(data) {
     queryDisplay.hidden = true;
   }
 
-  document.querySelector("#recommended-price").textContent = toman(analysis.recommended);
+  const enteredPrice = Number(
+    data.merchant_product?.current_price
+      || data.source_product?.price
+      || analysis.recommended,
+  );
+  document.querySelector("#selected-price").textContent = toman(enteredPrice);
 
   const sourceProduct = data.source_product;
   const setPriceBtn = document.querySelector("#set-price-basalam");
@@ -268,10 +273,7 @@ function renderResult(data) {
   slider.max = scale.high;
   slider.step = step;
   slider.value = analysis.recommended;
-  document.querySelector("#selected-price-label").textContent =
-    merchantContext.active
-      ? "قیمت پیشنهادی بازار"
-      : "قیمت محصول وارد شده";
+  document.querySelector("#selected-price-label").textContent = "قیمت محصول وارد شده";
   const merchantPriceNote = document.querySelector("#merchant-price-note");
   merchantPriceNote.hidden = !(merchantContext.active && merchantContext.currentPrice);
   if (merchantContext.active && merchantContext.currentPrice) {
@@ -693,8 +695,8 @@ function updateSelectedPrice() {
   const demandChange = elasticity.demandChangePct;
   const revenueChange = elasticity.revenueChangePct;
   const distancePct = elasticity.distancePct;
-  const selectedPriceEl = document.querySelector("#selected-price");
-  selectedPriceEl.textContent = toman(value);
+  const recommendedPriceEl = document.querySelector("#recommended-price");
+  recommendedPriceEl.textContent = toman(value);
 
   signal.classList.remove("quick", "fair", "patient");
   const optimalTolerance = Math.max(Number(slider.step) / 2, recommended * 0.001);
@@ -703,19 +705,19 @@ function updateSelectedPrice() {
     document.querySelector("#signal-title").textContent = "فروش سریع‌تر";
     document.querySelector("#signal-copy").textContent = "قیمت شما در بخش رقابتی بازار است و احتمال فروش سریع‌تر می‌شود.";
     slider.style.setProperty("--thumb", "var(--blue)");
-    selectedPriceEl.style.color = "var(--blue)";
+    recommendedPriceEl.style.color = "var(--blue)";
   } else if (value <= recommended + optimalTolerance) {
     signal.classList.add("fair");
     document.querySelector("#signal-title").textContent = "قیمت بهینه";
     document.querySelector("#signal-copy").textContent = "در نقطه پیشنهادی بازار هستید.";
     slider.style.setProperty("--thumb", "var(--teal)");
-    selectedPriceEl.style.color = Math.abs(value - recommended) < TOLERANCE ? "var(--green)" : "var(--ink)";
+    recommendedPriceEl.style.color = Math.abs(value - recommended) < TOLERANCE ? "var(--green)" : "var(--ink)";
   } else {
     signal.classList.add("patient");
     document.querySelector("#signal-title").textContent = "فروش صبورانه";
     document.querySelector("#signal-copy").textContent = "حاشیه بیشتری دارید، اما ممکن است برای فروش زمان بیشتری لازم باشد.";
     slider.style.setProperty("--thumb", "var(--red)");
-    selectedPriceEl.style.color = "var(--red)";
+    recommendedPriceEl.style.color = "var(--red)";
   }
   positionSaleSignal(position);
 
@@ -727,7 +729,7 @@ function updateSelectedPrice() {
     priceRisk.classList.add("good");
     riskTitle.textContent = "قیمت پیشنهادی بهینه";
     riskCopy.textContent = "شما دقیقاً روی قیمت پیشنهادی دقیقه هستید. در این نقطه، تعادل مناسبی بین تقاضا و درآمد حفظ می‌شود.";
-    selectedPriceEl.style.color = "var(--green)";
+    recommendedPriceEl.style.color = "var(--green)";
   } else if (value > recommended) {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
@@ -735,13 +737,13 @@ function updateSelectedPrice() {
     const demandLoss = Math.abs(demandChange);
     const demandLabel = demandLoss > 0 && demandLoss < 1 ? "کمتر از ۱" : fa(Math.round(demandLoss));
     riskCopy.textContent = `با این قیمت، برآورد می‌شود حدود ${demandLabel}٪ از تقاضا را از دست بدهید.`;
-    selectedPriceEl.style.color = severity === "danger" ? "var(--red)" : "var(--orange)";
+    recommendedPriceEl.style.color = severity === "danger" ? "var(--red)" : "var(--orange)";
   } else {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
     riskTitle.textContent = "قیمت پایین‌تر از پیشنهادی";
     riskCopy.textContent = `این قیمت ${fa(Math.round(Math.abs(distancePct)))}٪ پایین‌تر از پیشنهاد است و ممکن است درآمد را حدود ${fa(Math.round(Math.abs(revenueChange)))}٪ کاهش دهد.`;
-    selectedPriceEl.style.color = severity === "danger" ? "var(--red)" : "var(--orange)";
+    recommendedPriceEl.style.color = severity === "danger" ? "var(--red)" : "var(--orange)";
   }
 }
 
