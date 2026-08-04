@@ -7,6 +7,10 @@ const views = {
 const sourceNames = { torob: "ترب", digikala: "دیجی‌کالا", basalam: "باسلام" };
 let currentAnalysis = null;
 let currentSliderBands = null;
+let swipeReviewItems = [];
+const reviewedListingUrls = new Set();
+let comparableUpdatePending = false;
+let userRemovedComparableCount = 0;
 const pageParams = new URLSearchParams(window.location.search);
 let merchantContext = {
   active: pageParams.get("from") === "merchant",
@@ -123,6 +127,8 @@ async function fetchSampleProducts() {
 }
 
 async function analyze(productName) {
+  reviewedListingUrls.clear();
+  userRemovedComparableCount = 0;
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.set("q", productName);
   window.history.replaceState({}, "", nextUrl);
@@ -237,7 +243,7 @@ function renderResult(data) {
     .filter(([, count]) => count > 0)
     .map(([source, count]) => `${sourceNames[source]} ${fa(count)}`);
   document.querySelector("#source-summary").textContent =
-    `${parts.join(" · ")} · ${fa(analysis.excluded_count)} قیمت پرت حذف شد`;
+    `${parts.join(" · ")} · ${fa(Number(analysis.excluded_count) + userRemovedComparableCount)} قیمت پرت یا نامرتبط حذف شد`;
 
   const listings = document.querySelector("#listings");
   listings.classList.remove("expanded");
@@ -251,29 +257,23 @@ function renderResult(data) {
     const simClass = similarityPct >= 80 ? "high" : similarityPct >= 50 ? "mid" : "low";
     const simLabel = item.llm_similarity != null ? "امتیاز LLM" : "٪ شباهت";
     const listingKey = encodeURIComponent(href);
-    return `<a class="listing-card" href="${href}" target="_blank" rel="noopener noreferrer" data-listing="${listingKey}">
+    return `<article class="listing-card" data-listing="${listingKey}" data-url="${href}">
       ${imageNode}
       <span class="listing-info" style="flex: 1;">
-        <strong title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
+        <a class="listing-link" href="${href}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</a>
         <b>${toman(item.price)} تومان</b>
         <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ ${simLabel}</small>
         <small>${escapeHtml(sourceNames[item.source] || item.source)}</small>
-        
-        <div class="listing-state-controls">
-          <div class="listing-state-btn" data-state="like" title="پسندیدن">✓</div>
-          <div class="listing-state-btn" data-state="unknown" title="نامشخص">؟</div>
-          <div class="listing-state-btn" data-state="dislike" title="نپسندیدن">✕</div>
-        </div>
       </span>
-      <div class="listing-feedback" onclick="handleListingFeedback(event, ${index}, ${similarityPct})">
-        <button class="listing-feedback-button dislike" data-action="dislike" title="محصول مشابه نیست">👎</button>
-        <button class="listing-feedback-button like" data-action="like" title="محصول مشابه است">👍</button>
-      </div>
-    </a>`;
+      <button class="remove-listing-button" type="button" data-remove-url="${href}" aria-label="حذف قیمت ${escapeHtml(item.title)}">
+        <span aria-hidden="true">×</span> حذف قیمت
+      </button>
+    </article>`;
   }).join("");
   document.querySelector("#toggle-listings").textContent = "نمایش همه";
 
   setupFeedbackButtons();
+  setupSwipeReview();
   setupUseRecommendedButton();
   setupUpdateBasalamButton();
   setupSliderButtons();
@@ -282,8 +282,28 @@ function renderResult(data) {
 function setupFeedbackButtons() {
   const likeBtn = document.querySelector("#like-recommendation");
   const dislikeBtn = document.querySelector("#dislike-recommendation");
-  if (likeBtn) likeBtn.onclick = () => sendFeedback("recommendation", 1);
-  if (dislikeBtn) dislikeBtn.onclick = () => sendFeedback("recommendation", -1);
+  const status = document.querySelector("#recommendation-feedback-status");
+  [likeBtn, dislikeBtn].forEach(button => {
+    button?.classList.remove("selected");
+    button?.setAttribute("aria-pressed", "false");
+    if (button) button.disabled = false;
+  });
+  if (status) status.textContent = "";
+
+  const submit = async (button, rating) => {
+    [likeBtn, dislikeBtn].forEach(item => { if (item) item.disabled = true; });
+    const saved = await sendFeedback("recommendation", rating);
+    [likeBtn, dislikeBtn].forEach(item => {
+      if (!item) return;
+      item.disabled = false;
+      const selected = item === button;
+      item.classList.toggle("selected", selected);
+      item.setAttribute("aria-pressed", String(selected));
+    });
+    if (status) status.textContent = saved ? "ممنون؛ بازخوردت ثبت شد." : "ثبت بازخورد انجام نشد؛ دوباره تلاش کن.";
+  };
+  if (likeBtn) likeBtn.onclick = () => submit(likeBtn, 1);
+  if (dislikeBtn) dislikeBtn.onclick = () => submit(dislikeBtn, -1);
 }
 
 function setupUpdateBasalamButton() {
@@ -348,7 +368,7 @@ function setupSliderButtons() {
 
 async function sendFeedback(feedbackType, rating) {
   try {
-    await fetch("/api/feedback", {
+    const response = await fetch("/api/feedback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -358,8 +378,9 @@ async function sendFeedback(feedbackType, rating) {
         product_name: currentAnalysis?.query || document.querySelector("#result-title")?.textContent || "",
       }),
     });
+    return response.ok;
   } catch {
-    // feedback tracking is best-effort
+    return false;
   }
 }
 
@@ -381,15 +402,8 @@ async function recordButtonClick(buttonName, productId = null) {
   }
 }
 
-function handleListingFeedback(event, index, similarityPct) {
-  event.preventDefault();
-  event.stopPropagation();
-  const action = event.target.dataset.action;
-  if (!action) return;
-  const rating = action === "like" ? 1 : -1;
-  const listing = currentAnalysis?.analysis?.listings[index];
-  if (!listing) return;
-  fetch("/api/feedback", {
+function sendSimilarityFeedback(listing, rating) {
+  return fetch("/api/feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -398,12 +412,128 @@ function handleListingFeedback(event, index, similarityPct) {
       rating: rating,
       product_name: currentAnalysis?.query || "",
     }),
-  }).catch(() => {});
+  }).catch(() => null);
+}
 
-  // visual feedback
-  const card = event.target.closest(".listing-card");
-  card.style.opacity = "0.5";
-  setTimeout(() => { card.style.opacity = ""; }, 1500);
+async function removeComparable(url) {
+  if (comparableUpdatePending) return false;
+  const listings = currentAnalysis?.analysis?.listings || [];
+  const listing = listings.find(item => item.url === url);
+  if (!listing) return false;
+  if (listings.length <= 3) {
+    const progress = document.querySelector("#swipe-progress");
+    if (progress) progress.textContent = "برای تحلیل حداقل ۳ قیمت لازم است";
+    return false;
+  }
+
+  comparableUpdatePending = true;
+  document.querySelectorAll(".remove-listing-button").forEach(button => { button.disabled = true; });
+  sendSimilarityFeedback(listing, -1);
+  try {
+    const remaining = listings.filter(item => item.url !== url);
+    const response = await fetch("/api/market/recalculate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listings: remaining }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.detail || "محاسبه دوباره انجام نشد.");
+    userRemovedComparableCount += 1;
+    currentAnalysis.analysis = body.analysis;
+    renderResult(currentAnalysis);
+    const progress = document.querySelector("#swipe-progress");
+    if (progress) progress.textContent = "قیمت حذف و پیشنهاد به‌روز شد";
+    return true;
+  } catch (error) {
+    const progress = document.querySelector("#swipe-progress");
+    if (progress) progress.textContent = error.message;
+    document.querySelectorAll(".remove-listing-button").forEach(button => { button.disabled = false; });
+    return false;
+  } finally {
+    comparableUpdatePending = false;
+  }
+}
+
+function swipeCardMarkup(item, position) {
+  const image = safeUrl(item.image_url);
+  const imageNode = image
+    ? `<img src="${image}" alt="" draggable="false" referrerpolicy="no-referrer">`
+    : `<span class="swipe-image-placeholder">◇</span>`;
+  return `<article class="swipe-card${position ? " behind" : ""}" data-swipe-url="${safeUrl(item.url)}">
+    <span class="swipe-verdict reject">نامرتبط</span>
+    <span class="swipe-verdict accept">مشابه است</span>
+    ${imageNode}
+    <div><strong>${escapeHtml(item.title)}</strong><b>${toman(item.price)} تومان</b><small>${escapeHtml(sourceNames[item.source] || item.source)}</small></div>
+  </article>`;
+}
+
+function setupSwipeReview() {
+  const panel = document.querySelector("#swipe-review");
+  const deck = document.querySelector("#swipe-deck");
+  const listings = currentAnalysis?.analysis?.listings || [];
+  swipeReviewItems = listings.filter(item => !reviewedListingUrls.has(item.url)).slice(0, 5);
+  panel.hidden = swipeReviewItems.length === 0;
+  if (!swipeReviewItems.length) return;
+
+  deck.innerHTML = swipeReviewItems.slice(0, 2).reverse().map((item, reverseIndex, shown) =>
+    swipeCardMarkup(item, reverseIndex < shown.length - 1)
+  ).join("");
+  const progress = document.querySelector("#swipe-progress");
+  if (progress) progress.textContent = `${fa(reviewedListingUrls.size)} مورد بررسی شده`;
+  const activeCard = deck.querySelector(".swipe-card:not(.behind)");
+  if (!activeCard) return;
+
+  let startX = 0;
+  let deltaX = 0;
+  let dragging = false;
+  const move = event => {
+    if (!dragging) return;
+    deltaX = event.clientX - startX;
+    const rotation = Math.max(-12, Math.min(12, deltaX / 18));
+    activeCard.style.transform = `translateX(${deltaX}px) rotate(${rotation}deg)`;
+    activeCard.style.setProperty("--accept-opacity", Math.max(0, deltaX / 90));
+    activeCard.style.setProperty("--reject-opacity", Math.max(0, -deltaX / 90));
+  };
+  const finish = event => {
+    if (!dragging) return;
+    dragging = false;
+    activeCard.releasePointerCapture?.(event.pointerId);
+    activeCard.classList.remove("dragging");
+    if (Math.abs(deltaX) >= 85) {
+      completeSwipe(deltaX > 0 ? 1 : -1, activeCard);
+    } else {
+      activeCard.style.transform = "";
+      activeCard.style.setProperty("--accept-opacity", 0);
+      activeCard.style.setProperty("--reject-opacity", 0);
+    }
+  };
+  activeCard.addEventListener("pointerdown", event => {
+    dragging = true;
+    deltaX = 0;
+    startX = event.clientX;
+    activeCard.setPointerCapture?.(event.pointerId);
+    activeCard.classList.add("dragging");
+  });
+  activeCard.addEventListener("pointermove", move);
+  activeCard.addEventListener("pointerup", finish);
+  activeCard.addEventListener("pointercancel", finish);
+}
+
+async function completeSwipe(rating, card = document.querySelector(".swipe-card:not(.behind)")) {
+  const listing = swipeReviewItems[0];
+  if (!listing || !card || comparableUpdatePending) return;
+  card.classList.add(rating > 0 ? "fly-right" : "fly-left");
+  reviewedListingUrls.add(listing.url);
+  if (rating > 0) {
+    await sendSimilarityFeedback(listing, 1);
+    setTimeout(setupSwipeReview, 220);
+  } else {
+    const removed = await removeComparable(listing.url);
+    if (!removed) {
+      reviewedListingUrls.delete(listing.url);
+      card.classList.remove("fly-left");
+    }
+  }
 }
 
 function computeElasticity(value, recommended, low, high) {
@@ -448,7 +578,7 @@ function updateSelectedPrice() {
   const high = Number(slider.max);
   const position = percentageFor(value, low, high);
   const signal = document.querySelector("#sale-signal");
-  const recommended = Number(currentAnalysis.recommended || 0);
+  const recommended = Number(currentAnalysis.analysis?.recommended || 0);
   const elasticity = computeElasticity(value, recommended, low, high);
   const demandChange = elasticity.demandChangePct;
   const revenueChange = elasticity.revenueChangePct;
@@ -491,13 +621,15 @@ function updateSelectedPrice() {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
     riskTitle.textContent = "قیمت بالاتر از پیشنهادی";
-    riskCopy.textContent = `داری حدود ${Math.abs(demandChange).toFixed(0)}٪ از تقاضا رو از دست میدی.`;
+    const demandLoss = Math.abs(demandChange);
+    const demandLabel = demandLoss > 0 && demandLoss < 1 ? "کمتر از ۱" : fa(Math.round(demandLoss));
+    riskCopy.textContent = `با این قیمت، برآورد می‌شود حدود ${demandLabel}٪ از تقاضا را از دست بدهید.`;
     selectedPriceEl.style.color = severity === "danger" ? "var(--red)" : "var(--orange)";
   } else {
     const severity = Math.abs(distancePct) > 15 ? "danger" : "warning";
     priceRisk.classList.add(severity);
     riskTitle.textContent = "قیمت پایین‌تر از پیشنهادی";
-    riskCopy.textContent = `داری حدود ${Math.abs(distancePct).toFixed(0)}٪ قیمت رو پایین میذاری که ${Math.abs(revenueChange).toFixed(0)}٪ از کل درآمد رو کم میکنه.`;
+    riskCopy.textContent = `این قیمت ${fa(Math.round(Math.abs(distancePct)))}٪ پایین‌تر از پیشنهاد است و ممکن است درآمد را حدود ${fa(Math.round(Math.abs(revenueChange)))}٪ کاهش دهد.`;
     selectedPriceEl.style.color = severity === "danger" ? "var(--red)" : "var(--orange)";
   }
 }
@@ -550,49 +682,12 @@ document.querySelector("#toggle-listings").addEventListener("click", event => {
   grid.classList.toggle("expanded");
   event.currentTarget.textContent = grid.classList.contains("expanded") ? "نمایش کمتر" : "نمایش همه";
 });
-document.querySelector("#edit-listings").addEventListener("click", event => {
-  const grid = document.querySelector("#listings");
-  grid.classList.toggle("editing");
-  const isEditing = grid.classList.contains("editing");
-
-  event.currentTarget.textContent = isEditing ? "اتمام ویرایش" : "ویرایش";
-
-  if (!isEditing) {
-    if (!currentAnalysis || !currentAnalysis.listings) return;
-    
-    const productName = document.querySelector("#result-title").textContent;
-    analyze(productName, currentAnalysis.listings);
-  }
-});
 document.querySelector("#listings").addEventListener("click", event => {
-  const grid = event.currentTarget;
-  const isEditing = grid.classList.contains("editing");
-  const card = event.target.closest(".listing-card");
-  
-  if (!card) return;
-  if (isEditing) { event.preventDefault(); }
-
-  const btn = event.target.closest(".listing-state-btn");
-  if (!btn || !isEditing) return;
-
-  const index = card.dataset.index;
-  const newState = btn.dataset.state;
-  const currentState = card.dataset.currentState;
-
-  // Toggle state logic
-  const finalState = currentState === newState ? "default" : newState;
-
-  card.classList.remove("state-like", "state-dislike", "state-unknown");
-  card.dataset.currentState = finalState;
-  
-  if (finalState !== "default") {
-    card.classList.add(`state-${finalState}`);
-  }
-
-  if (currentAnalysis && currentAnalysis.listings[index]) {
-    currentAnalysis.listings[index].userState = finalState;
-  }
+  const button = event.target.closest(".remove-listing-button");
+  if (button) removeComparable(button.dataset.removeUrl);
 });
+document.querySelector("#swipe-reject").addEventListener("click", () => completeSwipe(-1));
+document.querySelector("#swipe-accept").addEventListener("click", () => completeSwipe(1));
 window.addEventListener("resize", applySliderMarkerLayout);
 
 const initialQuery = pageParams.get("q");

@@ -37,6 +37,36 @@ def test_market_analysis_endpoint(monkeypatch):
     assert len(body["sources"]) == 3
 
 
+def test_market_recalculation_uses_remaining_comparables():
+    payload = {
+        "listings": [
+            {"source": "torob", "title": "الف", "price": 400_000, "url": "https://torob.com/a", "similarity": 1},
+            {"source": "digikala", "title": "ب", "price": 500_000, "url": "https://digikala.com/b", "similarity": 1},
+            {"source": "basalam", "title": "ج", "price": 600_000, "url": "https://basalam.com/c", "similarity": 1},
+        ]
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/market/recalculate", json=payload)
+
+    assert response.status_code == 200
+    analysis = response.json()["analysis"]
+    assert analysis["recommended"] == 500_000
+    assert analysis["sample_size"] == 3
+
+
+def test_market_recalculation_requires_three_comparables():
+    payload = {
+        "listings": [
+            {"source": "torob", "title": "الف", "price": 400_000, "url": "https://torob.com/a"},
+            {"source": "digikala", "title": "ب", "price": 500_000, "url": "https://digikala.com/b"},
+        ]
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/market/recalculate", json=payload)
+
+    assert response.status_code == 422
+
+
 def test_market_analysis_resolves_link_and_excludes_own_basalam_product(monkeypatch):
     async def fake_resolve(value):
         assert value == "https://basalam.com/p/42"

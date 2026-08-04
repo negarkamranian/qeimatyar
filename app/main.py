@@ -485,6 +485,20 @@ class MarketSearchInput(BaseModel):
     basalam_product_url: str | None = Field(default=None, max_length=500)
 
 
+class ComparableListingInput(BaseModel):
+    source: str = Field(min_length=1, max_length=50)
+    title: str = Field(min_length=1, max_length=1000)
+    price: int = Field(gt=0)
+    url: str = Field(min_length=1, max_length=2000)
+    image_url: str = Field(default="", max_length=2000)
+    similarity: float = Field(default=0, ge=0, le=1)
+    llm_similarity: float | None = Field(default=None, ge=0, le=1)
+
+
+class ComparableRecalculationInput(BaseModel):
+    listings: list[ComparableListingInput] = Field(min_length=3, max_length=72)
+
+
 class RangeOverrideInput(BaseModel):
     min_price: int | None = Field(default=None, gt=0)
     max_price: int | None = Field(default=None, gt=0)
@@ -761,6 +775,31 @@ def submit_feedback(
             ),
         )
     return {"ok": True}
+
+
+@app.post("/api/market/recalculate")
+def recalculate_comparables(payload: ComparableRecalculationInput) -> dict[str, Any]:
+    """Rebuild the price analysis after a user removes an irrelevant comparable."""
+    listings = [
+        MarketListing(
+            source=item.source,
+            title=item.title,
+            price=item.price,
+            url=item.url,
+            image_url=item.image_url,
+            similarity=item.similarity,
+        )
+        for item in payload.listings
+    ]
+    llm_scores = {
+        item.url: item.llm_similarity
+        for item in payload.listings
+        if item.llm_similarity is not None
+    }
+    try:
+        return {"analysis": analyze_listings(listings, llm_scores)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 class ButtonClickInput(BaseModel):

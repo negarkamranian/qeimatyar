@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20260802-1">
+  <link rel="stylesheet" href="/static/app.css?v=20260804-1">
 </head>
 <body>
   <header class="site-header">
@@ -157,13 +157,17 @@
            <button id="set-price-basalam" class="update-price-button" hidden>
              <span>💰</span>تنظیم قیمت در باسلام
            </button>
-          <div class="feedback-buttons">
-            <button id="dislike-recommendation" class="feedback-button dislike" title="قیمت پیشنهادی مناسب نیست">
-              <span>👎</span>
-            </button>
-            <button id="like-recommendation" class="feedback-button like" title="قیمت پیشنهادی مناسب است">
-              <span>👍</span>
-            </button>
+          <div class="recommendation-feedback">
+            <small class="feedback-prompt">این پیشنهاد چطور بود؟</small>
+            <div class="feedback-buttons" role="group" aria-label="بازخورد قیمت پیشنهادی">
+              <button id="like-recommendation" class="feedback-button like" type="button" aria-pressed="false">
+                <span aria-hidden="true">✓</span> مناسب بود
+              </button>
+              <button id="dislike-recommendation" class="feedback-button dislike" type="button" aria-pressed="false">
+                <span aria-hidden="true">↗</span> نیاز به اصلاح
+              </button>
+            </div>
+            <small id="recommendation-feedback-status" class="feedback-status" role="status" aria-live="polite"></small>
           </div>
           <button id="update-basalam-price" class="update-price-button" hidden>
             <span>💰</span>به‌روزرسانی قیمت در باسلام
@@ -197,8 +201,22 @@
             <p id="source-summary"></p>
           </div>
           <div>
-            <button id="edit-listings" class="text-button">ویرایش</button>
             <button id="toggle-listings" class="text-button">نمایش همه</button>
+          </div>
+        </div>
+        <div id="swipe-review" class="swipe-review" hidden>
+          <div class="swipe-review-copy">
+            <span class="eyebrow">بهبود نتایج</span>
+            <h3>این محصول واقعاً مشابه است؟</h3>
+            <p>کارت را به راست بکشید اگر مشابه است؛ به چپ بکشید تا قیمت نامرتبط حذف شود.</p>
+          </div>
+          <div class="swipe-stage" aria-live="polite">
+            <div id="swipe-deck" class="swipe-deck"></div>
+          </div>
+          <div class="swipe-actions">
+            <button id="swipe-reject" class="swipe-action reject" type="button"><span aria-hidden="true">←</span> نامرتبط</button>
+            <span id="swipe-progress"></span>
+            <button id="swipe-accept" class="swipe-action accept" type="button">مشابه است <span aria-hidden="true">→</span></button>
           </div>
         </div>
         <div id="listings" class="listing-grid"></div>
@@ -223,6 +241,6 @@
   </footer>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/app.js?v=20260803-4" defer></script>
+  <script src="/static/app.js?v=20260804-1" defer></script>
 </body>
 </html>

@@ -272,13 +272,21 @@ h1, h2, p { margin-top: 0; }
 .recommendation strong { color: var(--green); font-size: 19px; }
 .recommendation span { color: var(--muted); font-size: 9px; }
 .recommendation button#use-recommended { border: 0; background: var(--green); color: white; padding: 9px 13px; border-radius: 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
-.feedback-buttons { display: flex; gap: 4px; }
+.recommendation-feedback { display: grid; gap: 4px; min-width: 205px; }
+.feedback-prompt { font-weight: 700; }
+.feedback-buttons { display: flex; gap: 5px; }
 .feedback-button {
-  border: 1px solid var(--line); background: transparent; border-radius: 8px;
-  padding: 6px 8px; font-size: 13px; cursor: pointer; display: inline-flex;
+  border: 1px solid var(--line); background: #fff; border-radius: 8px;
+  padding: 7px 9px; font-size: 9px; cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center; gap: 4px; color: var(--muted); transition: .15s ease;
 }
+.feedback-button span { font-size: 11px; color: inherit; }
 .feedback-button.like:hover { background: #dcfce8; border-color: var(--green); color: #166534; }
 .feedback-button.dislike:hover { background: #fee2e2; border-color: var(--red); color: #991b1b; }
+.feedback-button.like.selected { background: #dcfce8; border-color: var(--green); color: #166534; box-shadow: 0 0 0 2px rgba(23,75,62,.1); }
+.feedback-button.dislike.selected { background: #fff3e8; border-color: var(--orange); color: #9a4e0c; box-shadow: 0 0 0 2px rgba(239,140,47,.1); }
+.feedback-button:disabled { cursor: wait; opacity: .6; }
+.feedback-status { min-height: 13px; color: var(--green) !important; }
 .update-price-button {
   margin-top: 8px; padding: 8px 12px; border: 0; background: #0f766e;
   color: white; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer;
@@ -309,30 +317,51 @@ h1, h2, p { margin-top: 0; }
 .section-head p { color: var(--muted); font-size: 10px; margin: 0; }
 .text-button { border: 0; background: transparent; color: var(--teal); cursor: pointer; font-size: 10px; font-weight: 700; }
 .listing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
-.listing-card { border: 1px solid var(--line); border-radius: 11px; padding: 10px; display: flex; gap: 10px; color: var(--ink); text-decoration: none; min-width: 0; background: #fff; }
+.listing-card { position: relative; border: 1px solid var(--line); border-radius: 11px; padding: 10px; display: flex; gap: 10px; color: var(--ink); min-width: 0; background: #fff; }
 .listing-card:hover { border-color: #b9d8cf; box-shadow: 0 7px 20px rgba(30,49,43,.06); }
 .listing-card:nth-child(n+7) { display: none; }
 .listing-grid.expanded .listing-card { display: flex; }
 .listing-image { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--paper); flex: none; }
 .image-placeholder { width: 48px; height: 48px; border-radius: 8px; background: var(--paper); color: #a3aca8; display: grid; place-items: center; flex: none; }
 .listing-info { min-width: 0; }
-.listing-info strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; font-weight: 600; }
+.listing-link { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; font-weight: 600; color: var(--ink); text-decoration: none; }
+.listing-link:hover { color: var(--teal); }
 .listing-info b { display: block; margin-top: 4px; color: var(--green); font-size: 11px; }
 .listing-info small { display: inline-flex; margin-top: 3px; padding: 2px 5px; border-radius: 4px; background: var(--paper); color: var(--muted); font-size: 8px; }
 .listing-grid .sim-badge { margin-right: 4px; font-weight: 700; }
 .listing-grid .sim-badge.high { background: #dcfce8; color: #166534; }
 .listing-grid .sim-badge.mid { background: #fef9c4; color: #854d0e; }
 .listing-grid .sim-badge.low { background: #fee2e2; color: #991b1b; }
-.listing-feedback {
-  display: flex; flex-direction: column; gap: 2px;
-  margin-top: 4px; align-self: flex-end;
-}
-.listing-feedback-button {
-  border: 1px solid var(--line); background: transparent; border-radius: 6px;
-  padding: 2px 6px; font-size: 11px; cursor: pointer; min-width: 26px;
-}
-.listing-feedback-button.like:hover { background: #dcfce8; border-color: var(--green); color: #166534; }
-.listing-feedback-button.dislike:hover { background: #fee2e2; border-color: var(--red); color: #991b1b; }
+.remove-listing-button { align-self: flex-end; flex: none; border: 1px solid #f2c8cf; background: #fff7f8; color: #a7263d; border-radius: 7px; padding: 5px 7px; font-size: 8px; font-weight: 700; cursor: pointer; }
+.remove-listing-button:hover { border-color: var(--red); background: #fff0f2; }
+.remove-listing-button:disabled { opacity: .45; cursor: wait; }
+
+.swipe-review { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(230px, 1.2fr); align-items: center; gap: 22px; margin-bottom: 18px; padding: 18px 22px; overflow: hidden; border: 1px solid #dce9e5; border-radius: 15px; background: linear-gradient(135deg, #f7fbf9, #f8fbfd); }
+.swipe-review-copy .eyebrow { margin-bottom: 5px; }
+.swipe-review-copy h3 { margin: 0 0 5px; font-size: 14px; }
+.swipe-review-copy p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.8; }
+.swipe-stage { position: relative; min-height: 150px; direction: ltr; }
+.swipe-deck { position: absolute; inset: 0; display: grid; place-items: center; }
+.swipe-card { --accept-opacity: 0; --reject-opacity: 0; position: absolute; z-index: 2; width: min(100%, 380px); min-height: 126px; padding: 13px; display: grid; grid-template-columns: 94px 1fr; gap: 13px; align-items: center; direction: rtl; border: 1px solid #d9e1de; border-radius: 14px; background: #fff; box-shadow: 0 15px 35px rgba(30,49,43,.12); cursor: grab; user-select: none; touch-action: none; transition: transform .22s ease, opacity .22s ease; }
+.swipe-card.dragging { cursor: grabbing; transition: none; }
+.swipe-card.behind { z-index: 1; transform: translateY(8px) scale(.96); opacity: .58; pointer-events: none; }
+.swipe-card > img, .swipe-image-placeholder { width: 94px; height: 98px; object-fit: cover; border-radius: 10px; background: var(--paper); }
+.swipe-image-placeholder { display: grid; place-items: center; color: #9ca8a4; font-size: 24px; }
+.swipe-card strong, .swipe-card b, .swipe-card small { display: block; }
+.swipe-card strong { font-size: 11px; line-height: 1.7; }
+.swipe-card b { margin-top: 8px; color: var(--green); font-size: 13px; }
+.swipe-card small { margin-top: 3px; color: var(--muted); font-size: 8px; }
+.swipe-verdict { position: absolute; z-index: 3; top: 12px; padding: 5px 8px; border: 2px solid; border-radius: 7px; background: rgba(255,255,255,.92); font-size: 10px; font-weight: 800; transform: rotate(-7deg); pointer-events: none; }
+.swipe-verdict.accept { right: 12px; color: var(--green); opacity: var(--accept-opacity); }
+.swipe-verdict.reject { left: 12px; color: var(--red); opacity: var(--reject-opacity); transform: rotate(7deg); }
+.swipe-card.fly-right { transform: translateX(130%) rotate(14deg); opacity: 0; }
+.swipe-card.fly-left { transform: translateX(-130%) rotate(-14deg); opacity: 0; }
+.swipe-actions { grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 10px; direction: ltr; }
+.swipe-actions > span { min-width: 85px; color: var(--muted); font-size: 8px; text-align: center; direction: rtl; }
+.swipe-action { border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; background: #fff; font-size: 9px; font-weight: 700; cursor: pointer; }
+.swipe-action.reject { color: var(--red); border-color: #f2c8cf; }
+.swipe-action.accept { color: var(--green); border-color: #b9d8cf; }
+.swipe-action:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(30,49,43,.09); }
 .disclaimer { margin: 25px auto 0; padding: 13px 16px; background: #fff9eb; color: #776440; border: 1px solid #f0dfb5; border-radius: 9px; font-size: 10px; line-height: 1.8; }
 
 .error-view > span { width: 55px; height: 55px; display: grid; place-items: center; border-radius: 50%; background: #fff0f2; color: var(--red); font-size: 28px; font-weight: 800; margin-bottom: 17px; }
@@ -367,58 +396,13 @@ footer p { margin: 0; }
   .sale-signal { margin: 0 18px; align-items: flex-start; }
   .sale-signal p { line-height: 1.6; }
   .price-slider { padding: 28px 18px 23px; }
-  .recommendation { padding: 15px 18px; }
+  .recommendation { padding: 15px 18px; align-items: flex-start; flex-wrap: wrap; }
+  .recommendation-feedback { width: 100%; order: 5; }
   .summary-grid { grid-template-columns: 1fr; }
   .listing-grid { grid-template-columns: 1fr; }
   .listing-card:nth-child(n+5) { display: none; }
   .listing-grid.expanded .listing-card { display: flex; }
+  .swipe-review { grid-template-columns: 1fr; padding: 16px; }
+  .swipe-stage { min-height: 160px; }
+  .swipe-actions { grid-column: 1; }
 }
-
-
-/* State Background Colors (persist outside of editing mode) */
-.listing-card.state-like { 
-  background: #eaf5f1;
-  border-color: #b9d8cf;
-}
-.listing-card.state-dislike { 
-  background: #fff0f2;
-  border-color: #f5c2cb;
-}
-
-.listing-state-controls {
-  display: none;
-  gap: 6px;
-  margin-top: 10px;
-  justify-content: flex-end; 
-}
-
-.listing-grid.editing .listing-state-controls {
-  display: flex;
-}
-
-/* Small round-square buttons */
-.listing-state-btn {
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #fff;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.15s ease;
-}
-
-.listing-state-btn:hover { 
-  background: var(--paper); 
-}
-
-.listing-state-btn[data-state="like"]:hover { color: var(--green); border-color: var(--green); }
-.listing-state-btn[data-state="dislike"]:hover { color: var(--red); border-color: var(--red); }
-.listing-state-btn[data-state="unknown"]:hover { color: var(--blue); border-color: var(--blue); }
-
-.listing-card.state-like .listing-state-btn[data-state="like"] { background: var(--green); color: #fff; border-color: var(--green); }
-.listing-card.state-dislike .listing-state-btn[data-state="dislike"] { background: var(--red); color: #fff; border-color: var(--red); }
-.listing-card.state-unknown .listing-state-btn[data-state="unknown"] { background: var(--blue); color: #fff; border-color: var(--blue); }
