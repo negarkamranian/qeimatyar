@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
-from app.basalam import encrypt_token
+from app.basalam import BasalamError, encrypt_token
 from app.db import connection, init_db, now_iso
 from app.main import app
 from app.marketplaces import MarketListing, SourceStatus
@@ -178,6 +178,12 @@ def test_premium_analytics_are_redacted_until_subscription_is_active():
             VALUES(?,?,?,?,?,?,?)""",
             (USER_ID, 88001, 7001, 2, 450_000, now_iso(), now_iso()),
         )
+        db.execute(
+            """INSERT INTO merchant_product_price_points
+            (user_id,product_id,changed_at,price,discounted_price,synced_at)
+            VALUES(?,?,?,?,?,?)""",
+            (USER_ID, 7001, now_iso(), 475_000, 465_000, now_iso()),
+        )
     try:
         with TestClient(app) as client:
             client.cookies.set(COOKIE_NAME, create_session(USER_ID))
@@ -191,6 +197,7 @@ def test_premium_analytics_are_redacted_until_subscription_is_active():
             assert free["products"][0]["view_count"] == 125
             assert free["products"][0]["sales_count"] == 17
             assert free["products"][0]["rating"] == 4.6
+            assert free["products"][0]["basalam_price_history"][0]["price"] == 475_000
 
             with connection() as db:
                 db.execute(
@@ -310,10 +317,6 @@ def test_basalam_sync_persists_enrichment_sales_and_price_history(monkeypatch):
 
 def test_merchant_sync_reads_products_and_stores_estimate(monkeypatch):
     _insert_accounts_and_products()
-    monkeypatch.setattr(
-        "app.merchant_sync.settings.scopes",
-        "customer.profile.read vendor.profile.read vendor.product.read",
-    )
 
     async def fake_products(token, vendor_id):
         assert token == "test-token"
@@ -338,20 +341,34 @@ def test_merchant_sync_reads_products_and_stores_estimate(monkeypatch):
             "raw_count": 3,
         }
 
+    async def missing_parcel_consent(token, vendor_id):
+        raise BasalamError("forbidden", status_code=403)
+
+    async def no_price_changes(token, product_id, **kwargs):
+        return []
+
     monkeypatch.setattr("app.merchant_sync.basalam.products", fake_products)
+    monkeypatch.setattr("app.merchant_sync.basalam.vendor_parcels", missing_parcel_consent)
+    monkeypatch.setattr("app.merchant_sync.basalam.product_price_history", no_price_changes)
     monkeypatch.setattr("app.merchant_sync.market_crawler.search", fake_market_search)
     try:
         result = asyncio.run(merchant_sync.sync_user(USER_ID))
         assert result["ok"]
+        assert result["analytics"]["status"] == "needs_consent"
         with connection() as db:
             product = db.execute(
                 """SELECT * FROM merchant_products
                 WHERE user_id=? AND product_id=7003""",
                 (USER_ID,),
             ).fetchone()
+            account = db.execute(
+                "SELECT analytics_status FROM accounts WHERE user_id=?",
+                (USER_ID,),
+            ).fetchone()
         assert product["market_suggested"] == 500_000
         assert product["market_low"] == 475_000
         assert product["market_high"] == 525_000
+        assert account["analytics_status"] == "needs_consent"
     finally:
         _cleanup()
 

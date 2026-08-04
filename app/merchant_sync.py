@@ -250,18 +250,6 @@ class MerchantSyncService:
         """
         if account.get("marketplace") != "basalam":
             return {"status": "not_applicable", "sales": 0, "prices": 0}
-        if "vendor.parcel.read" not in settings.scopes.split():
-            with connection() as db:
-                db.execute(
-                    """UPDATE accounts SET analytics_status='needs_consent',
-                    analytics_error=? WHERE user_id=?""",
-                    (
-                        "برای دریافت تاریخچه فروش، اتصال باسلام را با دسترسی خواندن سفارش‌ها تمدید کنید.",
-                        user_id,
-                    ),
-                )
-            return {"status": "needs_consent", "sales": 0, "prices": 0}
-
         product_ids = {
             int(product["id"])
             for product in products[: max(1, settings.merchant_product_limit)]
@@ -379,9 +367,13 @@ class MerchantSyncService:
                     prices_written += 1
 
             has_any_success = sales_error is None or len(price_errors) < len(histories)
+            consent_required = (
+                isinstance(sales_error, BasalamError)
+                and sales_error.status_code in {401, 403}
+            )
             error_message = None
             if sales_error is not None:
-                if isinstance(sales_error, BasalamError) and sales_error.status_code in {401, 403}:
+                if consent_required:
                     error_message = "دسترسی تاریخچه فروش باسلام نیاز به اتصال دوباره دارد."
                 else:
                     error_message = "بخشی از تاریخچه فروش فعلاً دریافت نشد."
@@ -392,13 +384,19 @@ class MerchantSyncService:
                 analytics_error=? WHERE user_id=?""",
                 (
                     synced_at if has_any_success else None,
-                    "partial" if error_message else "ready",
+                    "needs_consent"
+                    if consent_required
+                    else ("partial" if error_message else "ready"),
                     error_message,
                     user_id,
                 ),
             )
         return {
-            "status": "partial" if sales_error or price_errors else "ready",
+            "status": (
+                "needs_consent"
+                if consent_required
+                else ("partial" if sales_error or price_errors else "ready")
+            ),
             "sales": sales_written,
             "prices": prices_written,
         }

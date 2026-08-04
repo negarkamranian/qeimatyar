@@ -1524,15 +1524,16 @@ async def auth_callback(
             db.execute(
                 """INSERT INTO accounts
                 (user_id,vendor_id,vendor_title,user_name,access_token,refresh_token,
-                 token_expires_at,connected_at,sync_status)
-                VALUES (?,?,?,?,?,?,?,?,?)
+                 token_expires_at,connected_at,sync_status,analytics_status,
+                 analytics_error)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(user_id) DO UPDATE SET
                   vendor_id=excluded.vendor_id, vendor_title=excluded.vendor_title,
                   user_name=excluded.user_name,
                   access_token=excluded.access_token, refresh_token=excluded.refresh_token,
                   token_expires_at=excluded.token_expires_at,
                   connected_at=excluded.connected_at,sync_status='queued',
-                  sync_error=NULL""",
+                  sync_error=NULL,analytics_status='pending',analytics_error=NULL""",
                 (
                     user["id"],
                     vendor["id"],
@@ -1543,6 +1544,8 @@ async def auth_callback(
                     token_expiry_iso(token_data.get("expires_in")),
                     now_iso(),
                     "queued",
+                    "pending",
+                    None,
                 ),
             )
         logger.info(
@@ -1681,6 +1684,14 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
     sales_history: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
     own_price_history: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
     market_history: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
+    for point in rows(
+        """SELECT product_id,changed_at,price,discounted_price
+        FROM merchant_product_price_points
+        WHERE user_id=? AND changed_at>=?
+        ORDER BY changed_at""",
+        (user_id, history_since),
+    ):
+        own_price_history[int(point.pop("product_id"))].append(point)
     if premium_active:
         for point in rows(
             """SELECT product_id,substr(sold_at,1,10) AS day,
@@ -1692,14 +1703,6 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
             (user_id, history_since),
         ):
             sales_history[int(point.pop("product_id"))].append(point)
-        for point in rows(
-            """SELECT product_id,changed_at,price,discounted_price
-            FROM merchant_product_price_points
-            WHERE user_id=? AND changed_at>=?
-            ORDER BY changed_at""",
-            (user_id, history_since),
-        ):
-            own_price_history[int(point.pop("product_id"))].append(point)
         for point in rows(
             """SELECT product_id,captured_at,recommended_price,market_low,market_high
             FROM merchant_market_snapshots
@@ -1724,6 +1727,7 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
             if account.get("marketplace") == "basalam"
             else None
         )
+        product["basalam_price_history"] = own_price_history[product["product_id"]]
         product_sales = int(product.pop("tracked_sales_180d") or 0)
         tracked_sales += product_sales
         tracked_revenue += int(product.pop("tracked_revenue_180d") or 0)
