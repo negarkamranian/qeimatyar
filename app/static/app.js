@@ -253,11 +253,17 @@ function renderResult(data) {
     const listingKey = encodeURIComponent(href);
     return `<a class="listing-card" href="${href}" target="_blank" rel="noopener noreferrer" data-listing="${listingKey}">
       ${imageNode}
-      <span class="listing-info">
+      <span class="listing-info" style="flex: 1;">
         <strong title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
         <b>${toman(item.price)} تومان</b>
         <small class="sim-badge ${simClass}">${fa(similarityPct)}٪ ${simLabel}</small>
         <small>${escapeHtml(sourceNames[item.source] || item.source)}</small>
+        
+        <div class="listing-state-controls">
+          <div class="listing-state-btn" data-state="like" title="پسندیدن">✓</div>
+          <div class="listing-state-btn" data-state="unknown" title="نامشخص">؟</div>
+          <div class="listing-state-btn" data-state="dislike" title="نپسندیدن">✕</div>
+        </div>
       </span>
       <div class="listing-feedback" onclick="handleListingFeedback(event, ${index}, ${similarityPct})">
         <button class="listing-feedback-button dislike" data-action="dislike" title="محصول مشابه نیست">👎</button>
@@ -543,6 +549,49 @@ document.querySelector("#toggle-listings").addEventListener("click", event => {
   const grid = document.querySelector("#listings");
   grid.classList.toggle("expanded");
   event.currentTarget.textContent = grid.classList.contains("expanded") ? "نمایش کمتر" : "نمایش همه";
+});
+document.querySelector("#edit-listings").addEventListener("click", event => {
+  const grid = document.querySelector("#listings");
+  grid.classList.toggle("editing");
+  const isEditing = grid.classList.contains("editing");
+
+  event.currentTarget.textContent = isEditing ? "اتمام ویرایش" : "ویرایش";
+
+  if (!isEditing) {
+    if (!currentAnalysis || !currentAnalysis.listings) return;
+    
+    const productName = document.querySelector("#result-title").textContent;
+    analyze(productName, currentAnalysis.listings);
+  }
+});
+document.querySelector("#listings").addEventListener("click", event => {
+  const grid = event.currentTarget;
+  const isEditing = grid.classList.contains("editing");
+  const card = event.target.closest(".listing-card");
+  
+  if (!card) return;
+  if (isEditing) { event.preventDefault(); }
+
+  const btn = event.target.closest(".listing-state-btn");
+  if (!btn || !isEditing) return;
+
+  const index = card.dataset.index;
+  const newState = btn.dataset.state;
+  const currentState = card.dataset.currentState;
+
+  // Toggle state logic
+  const finalState = currentState === newState ? "default" : newState;
+
+  card.classList.remove("state-like", "state-dislike", "state-unknown");
+  card.dataset.currentState = finalState;
+  
+  if (finalState !== "default") {
+    card.classList.add(`state-${finalState}`);
+  }
+
+  if (currentAnalysis && currentAnalysis.listings[index]) {
+    currentAnalysis.listings[index].userState = finalState;
+  }
 });
 window.addEventListener("resize", applySliderMarkerLayout);
 
