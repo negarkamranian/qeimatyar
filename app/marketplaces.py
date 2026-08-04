@@ -474,8 +474,21 @@ class MarketCrawler:
         self._lock = asyncio.Lock()
         self._currencies = CurrencyConverter()
 
-    async def search(self, query: str, user_states=None) -> dict[str, Any]:
-        key = normalize_text(query)
+    async def search(
+        self,
+        query: str,
+        user_states=None,
+        source_queries: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        source_queries = source_queries or {}
+        source_query = {
+            source: source_queries.get(source, query)
+            for source in MARKETPLACE_SOURCES
+        }
+        key = "|".join(
+            f"{source}:{normalize_text(source_query[source])}"
+            for source in MARKETPLACE_SOURCES
+        )
         cached = self._cache.get(key)
         if cached and time.monotonic() - cached[0] < self.cache_seconds and user_states is None:  # TODO: here, I'm killing the cache
             return cached[1]
@@ -496,11 +509,11 @@ class MarketCrawler:
             trust_env=settings.marketplace_trust_env,
         ) as client:
             tasks = [
-                self._torob(client, query),
-                self._digikala(client, query),
-                self._basalam(client, query),
-                self._trendyol(client, query),
-                self._noon(client, query),
+                self._torob(client, source_query["torob"]),
+                self._digikala(client, source_query["digikala"]),
+                self._basalam(client, source_query["basalam"]),
+                self._trendyol(client, source_query["trendyol"]),
+                self._noon(client, source_query["noon_uae"]),
             ]
             outcomes = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -528,6 +541,7 @@ class MarketCrawler:
             "listings": relevant[:72],
             "sources": statuses,
             "raw_count": len(listings),
+            "search_queries": source_query,
         }
         if user_states is None:  # TODO: here, I'm killing the cache
             async with self._lock:

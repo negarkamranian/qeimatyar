@@ -208,3 +208,41 @@ def test_crawler_does_not_require_socks_for_environment_proxy(monkeypatch):
     result = asyncio.run(crawler.search("محصول آزمایشی"))
     assert result["raw_count"] == 0
     assert all(status.ok for status in result["sources"])
+
+
+def test_crawler_routes_localized_queries_to_each_marketplace(monkeypatch):
+    crawler = MarketCrawler()
+    received = {}
+
+    def recorder(source):
+        async def search_source(_client, query, *args):
+            received[source] = query
+            return []
+        return search_source
+
+    monkeypatch.setattr(crawler, "_torob", recorder("torob"))
+    monkeypatch.setattr(crawler, "_digikala", recorder("digikala"))
+    monkeypatch.setattr(crawler, "_basalam", recorder("basalam"))
+    monkeypatch.setattr(crawler, "_trendyol", recorder("trendyol"))
+    monkeypatch.setattr(crawler, "_noon", recorder("noon_uae"))
+
+    result = asyncio.run(
+        crawler.search(
+            "original English title",
+            source_queries={
+                "torob": "پالت رژگونه 6 رنگ",
+                "digikala": "پالت رژگونه 6 رنگ",
+                "basalam": "پالت رژگونه 6 رنگ",
+                "trendyol": "6 renk allık paleti",
+                "noon_uae": "6 color blush palette",
+            },
+        )
+    )
+    assert received == {
+        "torob": "پالت رژگونه 6 رنگ",
+        "digikala": "پالت رژگونه 6 رنگ",
+        "basalam": "پالت رژگونه 6 رنگ",
+        "trendyol": "6 renk allık paleti",
+        "noon_uae": "6 color blush palette",
+    }
+    assert result["search_queries"] == received

@@ -26,7 +26,13 @@ from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token, fet
 from app.config import refresh_settings, save_admin_overrides, settings, _env_file_paths
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
-from app.llm import score_product_similarity, optimize_search_query, web_search_products, WebSearchResult
+from app.llm import (
+    WebSearchResult,
+    optimize_marketplace_queries,
+    optimize_search_query,
+    score_product_similarity,
+    web_search_products,
+)
 from app.marketplaces import (
     MarketListing,
     analyze_listings,
@@ -492,7 +498,7 @@ class PolicyInput(BaseModel):
 
 
 class MarketSearchInput(BaseModel):
-    product_name: str = Field(min_length=2, max_length=1000)
+    product_name: str = Field(min_length=2, max_length=5000)
     exclude_basalam_product_id: int | None = Field(default=None, gt=0)
     basalam_product_url: str | None = Field(default=None, max_length=500)
 
@@ -1009,6 +1015,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
             merchant_product = merchant_rows[0]
     source_product: dict[str, Any] | None = None
     search_query = query
+    source_queries: dict[str, str] | None = None
     if payload.basalam_product_url and settings.llm_similarity_enabled:
         product_id = _basalam_product_id_from_url(payload.basalam_product_url)
         if product_id:
@@ -1018,8 +1025,29 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
                 optimized = await optimize_search_query(source_product)
                 if optimized:
                     search_query = optimized
+    if (
+        resolved_from_url
+        and source_product is None
+        and settings.llm_similarity_enabled
+        and settings.avalai_api_key
+    ):
+        localized = await optimize_marketplace_queries(query)
+        if localized:
+            source_queries = {
+                "torob": localized["iran"],
+                "digikala": localized["iran"],
+                "basalam": localized["iran"],
+                "trendyol": localized["trendyol"],
+                "noon_uae": localized["noon"],
+            }
     try:
-        crawl = await market_crawler.search(search_query)
+        if source_queries:
+            crawl = await market_crawler.search(
+                search_query,
+                source_queries=source_queries,
+            )
+        else:
+            crawl = await market_crawler.search(search_query)
     except Exception as exc:
         logger.exception("Marketplace crawler initialization failed")
         raise HTTPException(
@@ -1039,7 +1067,12 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
             )
         llm_scores: dict[str, float] = {}
         if settings.llm_similarity_enabled:
-            llm_scores = await score_product_similarity(search_query, listings, source_product)
+            comparison_query = query if source_queries else search_query
+            llm_scores = await score_product_similarity(
+                comparison_query,
+                listings,
+                source_product,
+            )
         analysis = analyze_listings(listings, llm_scores)
     except ValueError as exc:
         raise HTTPException(
@@ -1075,6 +1108,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         "analysis": analysis,
         "sources": statuses,
         "raw_count": crawl["raw_count"],
+        "search_queries": crawl.get("search_queries", {}),
         "disclaimer": "این بازه از قیمت‌های فعلی فروش ساخته شده، نه تراکنش‌های قطعی‌شده.",
     }
 
@@ -1179,6 +1213,9 @@ async def market_analysis_extended(payload: MarketSearchInput, request: Request)
         "raw_count": len(listings),
         "disclaimer": "این نتایج از وب‌جستجو و مرورگرهای بازار آنلاین ایران جمع‌آوری شده‌اند؛ برای تصمیم‌گیری نهایی، قیمت و وضعیت کالا را بررسی کنید.",
     }
+
+
+@app.get("/auth/basalam")
 def connect_basalam() -> RedirectResponse:
     if not settings.client_id or not settings.client_secret:
         raise HTTPException(503, "Basalam OAuth credentials are not configured.")

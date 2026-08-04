@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -122,6 +123,53 @@ Product details:
         logger.info("LLM query optimized: %s -> %s", source_product.get("title", "")[:50], optimized)
         return optimized
     return ""
+
+
+async def optimize_marketplace_queries(title: str) -> dict[str, str]:
+    """Create concise, source-language queries for a product-link title."""
+    prompt = f'''You are an e-commerce product search translator.
+
+The product title below came from a marketplace URL. Identify the actual product and produce three concise search queries for the exact same item.
+
+Return ONLY one valid JSON object with exactly these keys:
+{{"iran":"...","trendyol":"...","noon":"..."}}
+
+Rules:
+- iran: Persian query for Torob, Digikala, and Basalam
+- trendyol: Turkish query for Trendyol Turkey
+- noon: English query for Noon UAE
+- Preserve brand, model, size, capacity, color, pack/count, and product type
+- Translate generic product attributes; never translate brand or model names
+- Remove duplicated phrases, SEO wording, promotions, seller names, and claims such as long-lasting or high quality unless essential to identify the variant
+- Each query must be useful by itself and no longer than 120 characters
+- Do not add facts missing from the title
+
+Product title:
+{title[:500]}
+'''
+    content = await _call_llm(prompt, max_tokens=350)
+    if not content:
+        return {}
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.I)
+    try:
+        payload = json.loads(cleaned)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("LLM marketplace queries were not valid JSON: %s", cleaned[:200])
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    queries: dict[str, str] = {}
+    for key in ("iran", "trendyol", "noon"):
+        value = " ".join(str(payload.get(key) or "").split()).strip(' "')
+        if 2 <= len(value) <= 160 and "http://" not in value and "https://" not in value:
+            queries[key] = value
+    if len(queries) != 3:
+        logger.warning("LLM marketplace query response was incomplete")
+        return {}
+    logger.info("LLM marketplace queries created for link title: %s", title[:80])
+    return queries
 
 
 def _build_source_context(source_product: dict[str, Any]) -> str:

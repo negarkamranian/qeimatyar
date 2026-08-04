@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/merchant.css?v=20260729-5">
+  <link rel="stylesheet" href="/static/merchant.css?v=20260804-3">
 </head>
 <body class="login-body">
   <header class="simple-header">
@@ -26,25 +26,43 @@
   </header>
 
   <main class="login-main">
-    <section class="login-card">
-      <span class="basalam-mark">ب</span>
-      <p class="eyebrow">ویژه غرفه‌داران باسلام</p>
-      <h1>قیمت همه محصولاتت، یک‌جا</h1>
+    <section class="login-card seller-login-card">
+      <p class="eyebrow">ویژه فروشنده‌ها</p>
+      <h1>ورود به پنل فروشندگی</h1>
       <p class="login-copy">
-        با اجازه شما محصولات غرفه خوانده می‌شوند و هر ۶ ساعت، بازه قیمت بازارشان تازه می‌شود.
+        بازارگاهت را انتخاب کن. اتصال باسلام محصولات غرفه را در دقیقه نشان می‌دهد؛ ورود دیجی‌کالا شما را به پنل رسمی فروشندگان می‌برد.
       </p>
-      <ul>
-        <li><span>✓</span> فقط خواندن پروفایل غرفه و محصولات</li>
-        <li><span>✓</span> قیمت واقعی غرفه تغییر نمی‌کند</li>
-        <li><span>✓</span> جزئیات بازه و محصولات مشابه شفاف است</li>
-      </ul>
-      {% if oauth_ready %}
-      <a class="connect-button" href="/auth/basalam">ورود به باسلام</a>
-      {% else %}
-      <button class="connect-button disabled" disabled>اتصال هنوز پیکربندی نشده</button>
-      <p class="setup-hint">مدیر سایت باید Client ID و Client Secret باسلام را تنظیم کند.</p>
-      {% endif %}
-      <small class="privacy-note">در هر زمان می‌توانید دسترسی برنامه را از حساب باسلام خود لغو کنید.</small>
+
+      <div class="seller-options">
+        <article class="seller-option basalam-option">
+          <span class="marketplace-mark basalam-mark">ب</span>
+          <div class="seller-option-copy">
+            <strong>باسلام</strong>
+            <small>اتصال غرفه و مشاهده پیشنهادهای قیمت</small>
+          </div>
+          {% if oauth_ready %}
+          <a class="connect-button" href="/auth/basalam">اتصال باسلام</a>
+          {% else %}
+          <button class="connect-button disabled" disabled>اتصال فعال نیست</button>
+          <p class="setup-hint">مدیر سایت باید Client ID و Client Secret باسلام را تنظیم کند.</p>
+          {% endif %}
+        </article>
+
+        <article class="seller-option digikala-option">
+          <span class="marketplace-mark digikala-mark">
+            <img src="/static/digikala-logo.png" alt="">
+          </span>
+          <div class="seller-option-copy">
+            <strong>دیجی‌کالا</strong>
+            <small>ورود مستقیم به مرکز رسمی فروشندگان</small>
+          </div>
+          <a class="connect-button digikala-button" href="https://seller.digikala.com/pwa/" target="_blank" rel="noopener noreferrer">
+            ورود به پنل دیجی‌کالا
+          </a>
+        </article>
+      </div>
+
+      <small class="privacy-note">دسترسی باسلام را هر زمان می‌توانید لغو کنید. اطلاعات ورود دیجی‌کالا فقط در وب‌سایت رسمی آن وارد می‌شود.</small>
     </section>
   </main>
 </body>

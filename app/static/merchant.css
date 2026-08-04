@@ -51,6 +51,7 @@ button, input { font: inherit; }
 .login-body { min-height: 100vh; background: linear-gradient(#fff 65%, #f7f9f7); }
 .login-main { min-height: calc(100vh - 78px); display: grid; place-items: center; padding: 45px 18px 80px; }
 .login-card { width: min(440px, 100%); padding: 38px; border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); text-align: center; background: #fff; }
+.seller-login-card { width: min(760px, 100%); }
 .basalam-mark { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 18px; background: #fff2e5; color: var(--orange); border-radius: 15px; font-size: 24px; font-weight: 800; }
 .login-card h1 { margin: 0 0 10px; font-size: 27px; }.login-copy { margin: 0 auto; color: var(--muted); line-height: 1.9; font-size: 12px; }
 .login-card ul { list-style: none; padding: 18px 0; margin: 20px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: right; display: grid; gap: 10px; }
@@ -58,6 +59,19 @@ button, input { font: inherit; }
 .connect-button { display: block; width: 100%; border: 0; border-radius: 10px; padding: 13px; background: var(--orange); color: white; text-decoration: none; font-weight: 700; cursor: pointer; }
 .connect-button:hover { background: #dc7d25; }.connect-button.disabled { opacity: .55; cursor: default; }
 .privacy-note, .setup-hint { display: block; color: #929a97; font-size: 9px; margin-top: 13px; line-height: 1.7; }
+.seller-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 25px 0 17px; text-align: right; }
+.seller-option { display: grid; grid-template-columns: 44px 1fr; gap: 11px; align-items: center; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.marketplace-mark { width: 44px; height: 44px; display: grid; place-items: center; margin: 0; border-radius: 12px; overflow: hidden; }
+.marketplace-mark.basalam-mark { font-size: 21px; }
+.digikala-mark { background: #fff1f3; }
+.digikala-mark img { width: 30px; height: 30px; object-fit: contain; }
+.seller-option-copy strong, .seller-option-copy small { display: block; }
+.seller-option-copy strong { font-size: 14px; }
+.seller-option-copy small { min-height: 34px; margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.8; }
+.seller-option .connect-button { grid-column: 1 / -1; margin-top: 6px; text-align: center; font-size: 11px; }
+.seller-option .setup-hint { grid-column: 1 / -1; margin: -2px 0 0; text-align: center; }
+.digikala-button { background: #ef4056; }
+.digikala-button:hover { background: #d93349; }
 
 .merchant-main { width: min(980px, calc(100% - 32px)); margin: 48px auto 90px; }
 .merchant-head { display: flex; justify-content: space-between; align-items: end; }
@@ -129,6 +143,8 @@ button, input { font: inherit; }
 
 @media (max-width: 720px) {
   .brand small { display: none; }
+  .seller-login-card { padding: 27px 20px; }
+  .seller-options { grid-template-columns: 1fr; }
   .merchant-main { margin-top: 30px; }
   .merchant-head { align-items: flex-start; gap: 14px; }.merchant-head h1 { font-size: 22px; max-width: 230px; }
   .merchant-sync-actions { flex-direction: column; align-items: stretch; }

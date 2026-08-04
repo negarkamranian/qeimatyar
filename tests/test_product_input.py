@@ -4,6 +4,7 @@ import pytest
 
 from app.product_input import (
     ProductLinkError,
+    _title_from_path,
     basalam_product_id_from_url,
     resolve_product_query,
 )
@@ -50,6 +51,35 @@ def test_trendyol_and_noon_product_links_are_allowed(monkeypatch):
     )
     assert trendyol == ("Apple iPhone 15", True)
     assert noon == ("Apple iPhone 15", True)
+
+
+def test_noon_fallback_uses_slug_instead_of_sku():
+    url = (
+        "https://www.noon.com/uae-en/floral-flush-blush-palette-6-color-pressed-powder/"
+        "N70083872V/p/?o=tracking"
+    )
+    assert _title_from_path(url) == "floral flush blush palette 6 color pressed powder"
+
+
+def test_noon_tracking_query_is_removed_before_fetch(monkeypatch):
+    seen = []
+
+    async def unavailable_html(value):
+        seen.append(value)
+        raise ProductLinkError("unavailable")
+
+    monkeypatch.setattr("app.product_input._fetch_product_html", unavailable_html)
+    query, from_url = asyncio.run(
+        resolve_product_query(
+            "https://www.noon.com/uae-en/floral-flush-blush-palette/N70083872V/p/"
+            "?o=abc&pcl=very-long-tracking-value"
+        )
+    )
+    assert seen == [
+        "https://www.noon.com/uae-en/floral-flush-blush-palette/N70083872V/p/"
+    ]
+    assert query == "floral flush blush palette"
+    assert from_url
 
 
 def test_basalam_product_id_is_read_from_link():

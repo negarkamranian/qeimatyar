@@ -47,6 +47,23 @@ function safeUrl(value) {
   return escapeHtml(normalizeUrl(value));
 }
 
+function cleanMarketplaceInput(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    const marketplaceHosts = new Set([
+      "basalam.com", "www.basalam.com", "torob.com", "www.torob.com",
+      "digikala.com", "www.digikala.com", "trendyol.com", "www.trendyol.com",
+      "noon.com", "www.noon.com",
+    ]);
+    if (!marketplaceHosts.has(url.hostname.toLowerCase())) return value;
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return value;
+  }
+}
+
 function showView(name) {
   Object.entries(views).forEach(([key, node]) => { node.hidden = key !== name; });
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -144,6 +161,7 @@ async function fetchSampleProducts() {
 }
 
 async function analyze(productName) {
+  productName = cleanMarketplaceInput(productName);
   reviewedListingUrls.clear();
   userRemovedComparableCount = 0;
   const nextUrl = new URL(window.location.href);
@@ -186,7 +204,10 @@ function renderResult(data) {
 
   const queryDisplay = document.querySelector("#search-query-display");
   if (data.resolved_from_url && data.query) {
-    queryDisplay.textContent = `جست‌وجو: ${data.query}`;
+    const localizedQueries = [...new Set(Object.values(data.search_queries || {}).filter(Boolean))];
+    queryDisplay.textContent = localizedQueries.length
+      ? `جست‌وجوی هوشمند: ${localizedQueries.join(" · ")}`
+      : `جست‌وجو: ${data.query}`;
     queryDisplay.hidden = false;
   } else {
     queryDisplay.hidden = true;

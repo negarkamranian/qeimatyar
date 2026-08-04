@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from html.parser import HTMLParser
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 import httpx
 
@@ -101,7 +101,11 @@ def _title_from_path(value: str) -> str:
         if segment.strip()
     ]
     for segment in reversed(segments):
-        if re.fullmatch(r"(?:dkp[-_]?)?\d+|[0-9a-f-]{20,}", segment, re.I):
+        if re.fullmatch(
+            r"(?:dkp[-_]?)?\d+|N[A-Z0-9]{8,}|[0-9a-f-]{20,}",
+            segment,
+            re.I,
+        ):
             continue
         if segment.lower() in {"p", "product", "products"}:
             continue
@@ -171,9 +175,12 @@ async def resolve_product_query(value: str) -> tuple[str, bool]:
         return raw_value[:160], False
 
     _validated_url(raw_value)
-    fallback = _title_from_path(raw_value)
+    # Tracking parameters on marketplace links can be several kilobytes long
+    # and are unnecessary for reading the public product page.
+    clean_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    fallback = _title_from_path(clean_url)
     try:
-        html = await _fetch_product_html(raw_value)
+        html = await _fetch_product_html(clean_url)
         parser = _ProductTitleParser()
         parser.feed(html)
         title = _clean_title(parser.product_title())
