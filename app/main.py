@@ -1632,26 +1632,113 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
     user_id = _merchant_user(request)
     account_rows = rows(
         """SELECT user_id,vendor_id,vendor_title,user_name,last_synced_at,
-        sync_status,sync_error,marketplace FROM accounts WHERE user_id=?""",
+        sync_status,sync_error,marketplace,analytics_synced_at,analytics_status,
+        analytics_error FROM accounts WHERE user_id=?""",
         (user_id,),
     )
     if not account_rows:
         raise HTTPException(401, "اتصال غرفه پیدا نشد.")
     account = account_rows[0]
+    history_since = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
     products = rows(
-        """SELECT * FROM merchant_products WHERE user_id=?
-        ORDER BY stock > 0 DESC, estimate_error IS NULL DESC, title""",
+        """SELECT mp.*,
+        COALESCE(SUM(CASE WHEN se.sold_at >= ? THEN se.quantity ELSE 0 END), 0)
+          AS tracked_sales_180d,
+        COALESCE(SUM(CASE WHEN se.sold_at >= ?
+          THEN se.quantity * se.unit_price ELSE 0 END), 0) AS tracked_revenue_180d,
+        COALESCE(SUM(CASE WHEN se.sold_at >= ?
+          AND mp.market_suggested > se.unit_price
+          THEN se.quantity * (mp.market_suggested - se.unit_price) ELSE 0 END), 0)
+          AS estimated_opportunity_180d
+        FROM merchant_products mp
+        LEFT JOIN merchant_sales_events se
+          ON se.user_id=mp.user_id AND se.product_id=mp.product_id
+        WHERE mp.user_id=?
+        GROUP BY mp.user_id,mp.product_id
+        ORDER BY mp.stock > 0 DESC,mp.estimate_error IS NULL DESC,mp.title""",
+        (history_since, history_since, history_since, user_id),
+    )
+    subscription_rows = rows(
+        """SELECT status,period_end FROM subscriptions WHERE customer_id=?""",
         (user_id,),
     )
+    subscription = subscription_rows[0] if subscription_rows else None
+    subscription_current = True
+    if subscription and subscription.get("period_end"):
+        try:
+            subscription_current = (
+                datetime.fromisoformat(subscription["period_end"])
+                > datetime.now(timezone.utc)
+            )
+        except (TypeError, ValueError):
+            subscription_current = False
+    premium_active = bool(
+        subscription
+        and subscription.get("status") in {"active", "trialing"}
+        and subscription_current
+    )
+    sales_history: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
+    own_price_history: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
+    market_history: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
+    if premium_active:
+        for point in rows(
+            """SELECT product_id,substr(sold_at,1,10) AS day,
+            SUM(quantity) AS units,SUM(quantity * unit_price) AS revenue
+            FROM merchant_sales_events
+            WHERE user_id=? AND sold_at>=?
+            GROUP BY product_id,substr(sold_at,1,10)
+            ORDER BY day""",
+            (user_id, history_since),
+        ):
+            sales_history[int(point.pop("product_id"))].append(point)
+        for point in rows(
+            """SELECT product_id,changed_at,price,discounted_price
+            FROM merchant_product_price_points
+            WHERE user_id=? AND changed_at>=?
+            ORDER BY changed_at""",
+            (user_id, history_since),
+        ):
+            own_price_history[int(point.pop("product_id"))].append(point)
+        for point in rows(
+            """SELECT product_id,captured_at,recommended_price,market_low,market_high
+            FROM merchant_market_snapshots
+            WHERE user_id=? AND captured_at>=?
+            ORDER BY captured_at""",
+            (user_id, history_since),
+        ):
+            market_history[int(point.pop("product_id"))].append(point)
     ready = 0
+    tracked_sales = 0
+    tracked_revenue = 0
+    estimated_opportunity = 0
     for product in products:
         product["source_counts"] = json.loads(product.get("source_counts") or "{}")
+        competitor_snapshot = json.loads(product.pop("competitor_snapshot", "[]") or "[]")
+        product["raw_enrichment"] = json.loads(product.get("raw_enrichment") or "{}")
         product["effective_min"] = product["user_min"] or product["market_low"]
         product["effective_max"] = product["user_max"] or product["market_high"]
         product["customized"] = bool(product["user_min"] or product["user_max"])
         product["basalam_url"] = (
             f"https://basalam.com/p/{product['product_id']}"
             if account.get("marketplace") == "basalam"
+            else None
+        )
+        product_sales = int(product.pop("tracked_sales_180d") or 0)
+        tracked_sales += product_sales
+        tracked_revenue += int(product.pop("tracked_revenue_180d") or 0)
+        product_opportunity = int(product.pop("estimated_opportunity_180d") or 0)
+        estimated_opportunity += product_opportunity
+        product["premium_analytics"] = (
+            {
+                "tracked_sales_180d": product_sales,
+                "estimated_revenue_opportunity_180d": product_opportunity,
+                "competitors": competitor_snapshot,
+                "sales_history": sales_history[product["product_id"]],
+                "own_price_history": own_price_history[product["product_id"]],
+                "market_recommendation_history": market_history[product["product_id"]],
+                "method": "current_recommendation_backtest",
+            }
+            if premium_active
             else None
         )
         if product["market_suggested"]:
@@ -1664,6 +1751,30 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
             "customized": sum(1 for item in products if item["customized"]),
             "refresh_hours": settings.merchant_sync_hours,
             "product_limit": settings.merchant_product_limit,
+        },
+        "premium": {
+            "active": premium_active,
+            "subscription_status": subscription.get("status") if subscription else None,
+            "window_days": 180,
+            "analytics": (
+                {
+                    "tracked_sales": tracked_sales,
+                    "tracked_revenue": tracked_revenue,
+                    "estimated_revenue_opportunity": estimated_opportunity,
+                    "method": "current_recommendation_backtest",
+                    "disclaimer": (
+                        "سناریوی درآمدی بر پایه تعداد فروش واقعی و پیشنهاد فعلی مدل است؛ "
+                        "سود قطعی یا تضمین تکرار فروش نیست."
+                    ),
+                }
+                if premium_active
+                else None
+            ),
+            "teaser": {
+                "has_sales_history": tracked_sales > 0,
+                "has_competitor_data": any(item.get("sample_size") for item in products),
+                "title": "تحلیل رقبا و فرصت درآمدی ۱۸۰ روزه آماده است",
+            },
         },
         "products": products,
     }

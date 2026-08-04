@@ -7,6 +7,8 @@ const state = {
   notificationLoaded: false,
   toastTimer: null,
   marketplace: "basalam",
+  premium: null,
+  premiumPrompted: false,
 };
 const toman = value => new Intl.NumberFormat("fa-IR").format(value || 0);
 const fa = value => new Intl.NumberFormat("fa-IR").format(value || 0);
@@ -101,6 +103,65 @@ function maybeShowNotificationToast(nextNotifications, unreadCount) {
   toast(body, { title: newestNotification.title || "اعلان جدید", kind: "notification" });
 }
 
+function openPremiumDialog() {
+  const dialog = document.querySelector("#premium-dialog");
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+function renderPremium(premium, account = {}) {
+  state.premium = premium;
+  const node = document.querySelector("#premium-insights");
+  if (premium.active && premium.analytics) {
+    const analytics = premium.analytics;
+    node.className = "premium-insights";
+    node.innerHTML = `
+      <div class="premium-head">
+        <div><p class="eyebrow">تصویر ${fa(premium.window_days)} روزه</p><h2>اثر قیمت‌گذاری روی درآمد</h2><p>${escapeHtml(analytics.disclaimer)}</p></div>
+        <span class="premium-pill">اشتراک حرفه‌ای فعال</span>
+      </div>
+      <div class="premium-cards">
+        <article class="premium-card"><small>فرصت درآمدی سناریویی</small><strong>${toman(analytics.estimated_revenue_opportunity)} تومان</strong><span>بازآزمایی پیشنهاد فعلی روی فروش واقعی</span></article>
+        <article class="premium-card"><small>درآمد فروش‌های ردیابی‌شده</small><strong>${toman(analytics.tracked_revenue)} تومان</strong><span>${fa(analytics.tracked_sales)} واحد فروش در داده قابل دریافت</span></article>
+        <article class="premium-card"><small>داده رقابتی</small><strong>باز شده</strong><span>رصد ذخیره‌شده قیمت و لینک رقبا</span></article>
+      </div>`;
+    return;
+  }
+
+  const readyCopy = premium.teaser.has_sales_history
+    ? "فروش تاریخی شما دریافت شده؛ عدد فرصت درآمدی پشت اشتراک حرفه‌ای آماده است."
+    : "با تمدید دسترسی باسلام، فروش تاریخی هم به این تحلیل اضافه می‌شود.";
+  const consentLink = account.analytics_status === "needs_consent"
+    || String(account.analytics_error || "").includes("دسترسی")
+    ? `<a class="premium-consent-link" href="/auth/basalam">تمدید دسترسی خواندنی باسلام</a>`
+    : "";
+  node.className = "premium-insights premium-lock";
+  node.innerHTML = `
+    <div class="premium-preview" aria-hidden="true">
+      <div class="premium-head"><div><p class="eyebrow">تصویر ${fa(premium.window_days)} روزه</p><h2>اثر قیمت‌گذاری روی درآمد</h2></div></div>
+      <div class="premium-cards">
+        <article class="premium-card"><small>فرصت درآمدی سناریویی</small><strong>۰٬۰۰۰٬۰۰۰ تومان</strong><span>بازآزمایی پیشنهاد قیمت</span></article>
+        <article class="premium-card"><small>درآمد ردیابی‌شده</small><strong>۰٬۰۰۰٬۰۰۰ تومان</strong><span>فروش تاریخی غرفه</span></article>
+        <article class="premium-card"><small>رقبای معتبر</small><strong>۰ فروشنده</strong><span>قیمت و لینک مستقیم</span></article>
+      </div>
+    </div>
+    <div class="premium-lock-overlay">
+      <div class="premium-lock-copy"><strong>${escapeHtml(premium.teaser.title)}</strong><p>${escapeHtml(readyCopy)}</p><button class="premium-unlock" type="button">دیدن تحلیل و قیمت رقبا</button>${consentLink}</div>
+    </div>`;
+  node.querySelector(".premium-unlock").addEventListener("click", () => {
+    recordButtonClick("premium_teaser_open");
+    openPremiumDialog();
+  });
+  if (!state.premiumPrompted) {
+    state.premiumPrompted = true;
+    let alreadySeen = false;
+    try { alreadySeen = sessionStorage.getItem("premium-prompt-seen") === "1"; } catch {}
+    if (!alreadySeen) {
+      try { sessionStorage.setItem("premium-prompt-seen", "1"); } catch {}
+      window.setTimeout(openPremiumDialog, 900);
+    }
+  }
+}
+
 async function loadNotifications(options = {}) {
   const data = await api("/api/merchant/notifications");
   const nextNotifications = data.notifications;
@@ -122,13 +183,16 @@ function productRow(product) {
     ? `<strong>${toman(product.market_low)} تا ${toman(product.market_high)}</strong>`
     : `<strong class="estimate-error">${escapeHtml(product.estimate_error || "در انتظار تحلیل")}</strong>`;
   const analysisUrl = escapeHtml(productAnalysisUrl(product));
+  const premiumOpportunity = product.premium_analytics?.estimated_revenue_opportunity_180d
+    ? `<span class="opportunity-badge">فرصت سناریویی: ${toman(product.premium_analytics.estimated_revenue_opportunity_180d)} تومان</span>`
+    : "";
   return `<article class="product-row" data-title="${escapeHtml(product.title.toLowerCase())}" data-analysis-url="${analysisUrl}">
     <a class="product-identity" href="${analysisUrl}">${imageNode}<span>
       <strong title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</strong>
       <small>موجودی ${fa(product.stock)} · مشاهده تحلیل بازار</small>
     </span></a>
     <div class="price-block"><small>قیمت فعلی</small><strong>${toman(product.current_price)} تومان</strong></div>
-    <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
+    <div class="range-block"><small>بازه پیشنهادی</small>${range}${premiumOpportunity}</div>
     <div class="product-actions">
       <a class="analysis-link" href="${analysisUrl}" onclick="recordButtonClick('merchant_analysis', ${product.product_id})">تحلیل بازار</a>
       ${product.market_suggested && state.marketplace === "basalam"
@@ -153,6 +217,7 @@ async function loadDashboard() {
   const data = await api("/api/merchant/dashboard");
   state.products = data.products;
   state.marketplace = data.account.marketplace || "basalam";
+  renderPremium(data.premium, data.account);
   state.status = data.account.sync_status;
   const running = ["running", "queued"].includes(state.status);
   document.querySelector("#sync-state").hidden = !running;
@@ -198,6 +263,17 @@ document.querySelector("#sync-products-button").addEventListener("click", async 
   }
 });
 document.querySelector("#product-filter").addEventListener("input", renderProducts);
+document.querySelectorAll("[data-close-premium]").forEach(button => {
+  button.addEventListener("click", () => document.querySelector("#premium-dialog").close());
+});
+document.querySelector("#premium-dialog").addEventListener("click", event => {
+  if (event.target === event.currentTarget) event.currentTarget.close();
+});
+document.querySelector("#premium-interest-button").addEventListener("click", () => {
+  recordButtonClick("premium_purchase_intent");
+  document.querySelector("#premium-dialog").close();
+  toast("برای تکمیل خرید، اتصال درگاه اشتراک باید برای سرویس فعال شود.", { title: "اشتراک حرفه‌ای" });
+});
 document.addEventListener("click", event => {
   const row = event.target.closest(".product-row[data-analysis-url]");
   if (row && !event.target.closest("a, button")) {

@@ -91,6 +91,10 @@ def _insert_accounts_and_products():
 def _cleanup():
     with connection() as db:
         db.execute(
+            "DELETE FROM subscriptions WHERE customer_id IN (?,?)",
+            (USER_ID, OTHER_USER_ID),
+        )
+        db.execute(
             "DELETE FROM accounts WHERE user_id IN (?,?)",
             (USER_ID, OTHER_USER_ID),
         )
@@ -145,8 +149,156 @@ def test_merchant_dashboard_is_private_and_range_is_tenant_scoped():
         _cleanup()
 
 
+def test_premium_analytics_are_redacted_until_subscription_is_active():
+    _insert_accounts_and_products()
+    with connection() as db:
+        db.execute(
+            """UPDATE merchant_products SET competitor_snapshot=?
+            WHERE user_id=? AND product_id=?""",
+            (
+                '[{"source":"torob","title":"رقیب","price":600000,"url":"https://torob.com/x"}]',
+                USER_ID,
+                7001,
+            ),
+        )
+        db.execute(
+            """INSERT INTO merchant_sales_events
+            (user_id,order_item_id,product_id,quantity,unit_price,sold_at,synced_at)
+            VALUES(?,?,?,?,?,?,?)""",
+            (USER_ID, 88001, 7001, 2, 450_000, now_iso(), now_iso()),
+        )
+    try:
+        with TestClient(app) as client:
+            client.cookies.set(COOKIE_NAME, create_session(USER_ID))
+            free = client.get("/api/merchant/dashboard").json()
+            assert free["premium"]["active"] is False
+            assert free["premium"]["analytics"] is None
+            assert free["premium"]["teaser"]["has_sales_history"] is True
+            assert free["products"][0]["premium_analytics"] is None
+            assert "competitor_snapshot" not in free["products"][0]
+
+            with connection() as db:
+                db.execute(
+                    """INSERT INTO subscriptions
+                    (customer_id,subscription_id,plan_id,status,updated_at)
+                    VALUES(?,?,?,?,?)""",
+                    (USER_ID, 1, 1, "active", now_iso()),
+                )
+
+            premium = client.get("/api/merchant/dashboard").json()
+            assert premium["premium"]["active"] is True
+            assert premium["premium"]["analytics"]["tracked_sales"] == 2
+            assert premium["premium"]["analytics"]["estimated_revenue_opportunity"] == 100_000
+            product_analytics = premium["products"][0]["premium_analytics"]
+            assert product_analytics["tracked_sales_180d"] == 2
+            assert product_analytics["competitors"][0]["source"] == "torob"
+    finally:
+        _cleanup()
+
+
+def test_basalam_sync_persists_enrichment_sales_and_price_history(monkeypatch):
+    _insert_accounts_and_products()
+
+    async def fake_products(token, vendor_id):
+        return [{
+            "id": 7003,
+            "title": "عسل ویژه",
+            "price": 510_000,
+            "inventory": 4,
+            "photo": {},
+            "category": {"title": "عسل"},
+            "status": {"title": "منتشر شده"},
+            "view_count": 120,
+            "sales_count": 9,
+            "review_count": 3,
+            "rating": 4.7,
+            "sku": "HONEY-1",
+        }]
+
+    async def fake_parcels(token, vendor_id):
+        return [
+            {
+                "id": 991,
+                "created_at": now_iso(),
+                "status": {"id": 3238, "title": "ارسال شده"},
+                "order": {"paid_at": now_iso(), "customer": {"mobile": "09120000000"}},
+                "items": [{
+                    "id": 881,
+                    "quantity": 2,
+                    "price": 490_000,
+                    "product": {"id": 7003},
+                }],
+            },
+            {
+                "id": 992,
+                "created_at": now_iso(),
+                "status": {"id": 3067, "title": "لغو شده"},
+                "order": {"paid_at": now_iso()},
+                "items": [{
+                    "id": 882,
+                    "quantity": 5,
+                    "price": 490_000,
+                    "product": {"id": 7003},
+                }],
+            },
+        ]
+
+    async def fake_price_history(token, product_id, **kwargs):
+        return [{
+            "change_time": "2026-07-01T00:00:00+00:00",
+            "price": 480_000,
+            "discounted_price": 470_000,
+        }]
+
+    async def fake_market_search(query):
+        return {
+            "listings": [
+                MarketListing("torob", query, 500_000, "https://torob.com/1", similarity=1),
+                MarketListing("digikala", query, 520_000, "https://digikala.com/1", similarity=1),
+                MarketListing("basalam", query, 540_000, "https://basalam.com/p/999", similarity=1),
+            ],
+            "sources": [],
+            "raw_count": 3,
+        }
+
+    monkeypatch.setattr("app.merchant_sync.settings.scopes", "customer.profile.read vendor.profile.read vendor.product.read vendor.parcel.read")
+    monkeypatch.setattr("app.merchant_sync.basalam.products", fake_products)
+    monkeypatch.setattr("app.merchant_sync.basalam.vendor_parcels", fake_parcels)
+    monkeypatch.setattr("app.merchant_sync.basalam.product_price_history", fake_price_history)
+    monkeypatch.setattr("app.merchant_sync.market_crawler.search", fake_market_search)
+    try:
+        result = asyncio.run(merchant_sync.sync_user(USER_ID))
+        assert result["analytics"] == {"status": "ready", "sales": 1, "prices": 1}
+        with connection() as db:
+            product = db.execute(
+                "SELECT * FROM merchant_products WHERE user_id=? AND product_id=7003",
+                (USER_ID,),
+            ).fetchone()
+            sale = db.execute(
+                "SELECT * FROM merchant_sales_events WHERE user_id=? AND order_item_id=881",
+                (USER_ID,),
+            ).fetchone()
+            point = db.execute(
+                "SELECT * FROM merchant_product_price_points WHERE user_id=? AND product_id=7003",
+                (USER_ID,),
+            ).fetchone()
+        assert product["category_title"] == "عسل"
+        assert product["view_count"] == 120
+        assert product["sales_count"] == 9
+        assert sale["quantity"] == 2
+        assert sale["unit_price"] == 490_000
+        assert "09120000000" not in str(dict(sale))
+        assert point["price"] == 480_000
+    finally:
+        _cleanup()
+
+
 def test_merchant_sync_reads_products_and_stores_estimate(monkeypatch):
     _insert_accounts_and_products()
+    monkeypatch.setattr(
+        "app.merchant_sync.settings.scopes",
+        "customer.profile.read vendor.profile.read vendor.product.read",
+    )
 
     async def fake_products(token, vendor_id):
         assert token == "test-token"

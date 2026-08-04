@@ -99,6 +99,42 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_merchant_products_user
               ON merchant_products(user_id);
+            CREATE TABLE IF NOT EXISTS merchant_sales_events (
+                user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                order_item_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                unit_price INTEGER NOT NULL DEFAULT 0,
+                sold_at TEXT NOT NULL,
+                parcel_status TEXT,
+                synced_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, order_item_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_merchant_sales_product_date
+              ON merchant_sales_events(user_id, product_id, sold_at DESC);
+            CREATE TABLE IF NOT EXISTS merchant_product_price_points (
+                user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                product_id INTEGER NOT NULL,
+                changed_at TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                discounted_price INTEGER,
+                synced_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, product_id, changed_at)
+            );
+            CREATE INDEX IF NOT EXISTS idx_merchant_price_points_product_date
+              ON merchant_product_price_points(user_id, product_id, changed_at DESC);
+            CREATE TABLE IF NOT EXISTS merchant_market_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                product_id INTEGER NOT NULL,
+                recommended_price INTEGER NOT NULL,
+                market_low INTEGER NOT NULL,
+                market_high INTEGER NOT NULL,
+                listings TEXT NOT NULL DEFAULT '[]',
+                captured_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_merchant_market_snapshots_product_date
+              ON merchant_market_snapshots(user_id, product_id, captured_at DESC);
             CREATE TABLE IF NOT EXISTS merchant_notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
@@ -184,6 +220,40 @@ def init_db() -> None:
         }
         for column, statement in migrations.items():
             if column not in account_columns:
+                db.execute(statement)
+
+        account_analytics_migrations = {
+            "analytics_synced_at": "ALTER TABLE accounts ADD COLUMN analytics_synced_at TEXT",
+            "analytics_status": "ALTER TABLE accounts ADD COLUMN analytics_status TEXT NOT NULL DEFAULT 'pending'",
+            "analytics_error": "ALTER TABLE accounts ADD COLUMN analytics_error TEXT",
+        }
+        for column, statement in account_analytics_migrations.items():
+            if column not in account_columns:
+                db.execute(statement)
+
+        merchant_product_columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(merchant_products)").fetchall()
+        }
+        merchant_product_migrations = {
+            "category_title": "ALTER TABLE merchant_products ADD COLUMN category_title TEXT",
+            "status_title": "ALTER TABLE merchant_products ADD COLUMN status_title TEXT",
+            "view_count": "ALTER TABLE merchant_products ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0",
+            "sales_count": "ALTER TABLE merchant_products ADD COLUMN sales_count INTEGER NOT NULL DEFAULT 0",
+            "review_count": "ALTER TABLE merchant_products ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0",
+            "rating": "ALTER TABLE merchant_products ADD COLUMN rating REAL",
+            "product_created_at": "ALTER TABLE merchant_products ADD COLUMN product_created_at TEXT",
+            "product_updated_at": "ALTER TABLE merchant_products ADD COLUMN product_updated_at TEXT",
+            "product_url": "ALTER TABLE merchant_products ADD COLUMN product_url TEXT",
+            "sku": "ALTER TABLE merchant_products ADD COLUMN sku TEXT",
+            "preparation_day": "ALTER TABLE merchant_products ADD COLUMN preparation_day INTEGER",
+            "net_weight": "ALTER TABLE merchant_products ADD COLUMN net_weight REAL",
+            "packaged_weight": "ALTER TABLE merchant_products ADD COLUMN packaged_weight REAL",
+            "raw_enrichment": "ALTER TABLE merchant_products ADD COLUMN raw_enrichment TEXT NOT NULL DEFAULT '{}'",
+            "competitor_snapshot": "ALTER TABLE merchant_products ADD COLUMN competitor_snapshot TEXT NOT NULL DEFAULT '[]'",
+        }
+        for column, statement in merchant_product_migrations.items():
+            if column not in merchant_product_columns:
                 db.execute(statement)
 
         button_columns = {

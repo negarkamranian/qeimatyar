@@ -229,5 +229,16 @@ docker compose -f compose.production.yml logs app --since=15m | grep 'trace_id=D
 موارد زیر باشند:
 
 ```dotenv
-BASALAM_SCOPES=customer.profile.read vendor.profile.read vendor.product.read
+BASALAM_SCOPES=customer.profile.read vendor.profile.read vendor.product.read vendor.parcel.read
 ```
+
+`vendor.parcel.read` برای ساخت تاریخچه فروش محصول از اقلام مرسوله لازم است.
+سرویس فقط شناسه قلم سفارش، شناسه محصول، تعداد، قیمت و زمان فروش را نگه می‌دارد
+و نام، موبایل یا نشانی خریدار را ذخیره نمی‌کند. حساب‌هایی که قبل از اضافه‌شدن
+این scope وصل شده‌اند باید یک‌بار اتصال باسلام را تمدید کنند؛ همگام‌سازی فهرست
+محصولات در نبود این دسترسی همچنان انجام می‌شود.
+
+در فرم ساخت توکن/کلاینت، عنوان لاتین پیشنهادی
+`Daghigheh Merchant Pricing Analytics` است. گزینه‌های «دسترسی کامل به
+سفارشات» (`order-processing`)، scopeهای `*.write`، خریدهای شخصی کاربر، کیف پول
+و گفت‌وگو برای این کاربرد لازم نیستند و نباید انتخاب شوند.

@@ -145,6 +145,77 @@ class BasalamClient:
             page += 1
         return products
 
+    async def product_price_history(
+        self,
+        token: str,
+        product_id: int,
+        *,
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return the merchant product's own historical prices.
+
+        This endpoint is part of the Core service and is covered by the
+        ``vendor.product.read`` authority.
+        """
+        params = {
+            key: value
+            for key, value in {"start_time": start_time, "end_time": end_time}.items()
+            if value
+        }
+        payload = await self._request(
+            "GET",
+            f"{self.api_base}/products/{product_id}/price-history",
+            token=token,
+            params=params,
+            operation="product_price_history",
+        )
+        if isinstance(payload, list):
+            return payload
+        return payload.get("data") or []
+
+    async def vendor_parcels(
+        self,
+        token: str,
+        vendor_id: int,
+        *,
+        max_pages: int = 25,
+    ) -> list[dict[str, Any]]:
+        """Read recent seller parcels without retaining customer information.
+
+        The caller extracts only product, quantity, unit-price and timestamp.
+        Pagination is cursor based in the Order Processing service.
+        """
+        parcels: list[dict[str, Any]] = []
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        for _ in range(max(1, min(max_pages, 100))):
+            params: list[tuple[str, Any]] = [
+                ("items.vendor_ids", str(vendor_id)),
+                ("per_page", 100),
+                ("sort", "created_at:desc"),
+            ]
+            if cursor:
+                params.append(("cursor", cursor))
+            payload = await self._request(
+                "GET",
+                f"{self.api_base}/vendor-parcels",
+                token=token,
+                params=params,
+                operation="vendor_sales_history",
+            )
+            if isinstance(payload, list):
+                parcels.extend(item for item in payload if isinstance(item, dict))
+                break
+            batch = payload.get("data") or []
+            parcels.extend(item for item in batch if isinstance(item, dict))
+            next_cursor = payload.get("next_cursor")
+            if not batch or not next_cursor or str(next_cursor) in seen_cursors:
+                break
+            cursor = str(next_cursor)
+            seen_cursors.add(cursor)
+        return parcels
+
     async def update_price(self, token: str, product_id: int, price: int) -> dict[str, Any]:
         # Verified against basalam-sdk 1.2.0 CoreService.update_product.
         # Sending the minimal PATCH avoids overwriting unrelated product fields.
