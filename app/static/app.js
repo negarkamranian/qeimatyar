@@ -286,9 +286,11 @@ function renderResult(data) {
 }
 
 function setupFeedbackButtons() {
+  const feedback = document.querySelector(".recommendation-feedback");
   const likeBtn = document.querySelector("#like-recommendation");
   const dislikeBtn = document.querySelector("#dislike-recommendation");
   const status = document.querySelector("#recommendation-feedback-status");
+  if (feedback) feedback.hidden = false;
   [likeBtn, dislikeBtn].forEach(button => {
     button?.classList.remove("selected");
     button?.setAttribute("aria-pressed", "false");
@@ -306,7 +308,11 @@ function setupFeedbackButtons() {
       item.classList.toggle("selected", selected);
       item.setAttribute("aria-pressed", String(selected));
     });
-    if (status) status.textContent = saved ? "ممنون؛ بازخوردت ثبت شد." : "ثبت بازخورد انجام نشد؛ دوباره تلاش کن.";
+    if (saved) {
+      if (feedback) feedback.hidden = true;
+      return;
+    }
+    if (status) status.textContent = "ثبت بازخورد انجام نشد؛ دوباره تلاش کن.";
   };
   if (likeBtn) likeBtn.onclick = () => submit(likeBtn, 1);
   if (dislikeBtn) dislikeBtn.onclick = () => submit(dislikeBtn, -1);
