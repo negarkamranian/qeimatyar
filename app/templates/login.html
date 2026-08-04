@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/merchant.css?v=20260804-4">
+  <link rel="stylesheet" href="/static/merchant.css?v=20260804-5">
 </head>
 <body class="login-body">
   <header class="simple-header">
@@ -20,7 +20,7 @@
         <img src="/static/logo.jpg" alt="دقیقه" onload="this.nextElementSibling.hidden=true" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
         <span class="brand-mark-fallback">ق</span>
       </span>
-      <span><strong>دقیقه</strong><small>پیشنهاد دهنده هوشمند قیمت</small></span>
+      <span><strong>دقیقه</strong><small>پیشنهاد دهنده هوشمند لحظه‌ای قیمت</small></span>
     </a>
     <a href="/">بازگشت به جست‌وجوی قیمت</a>
   </header>
@@ -54,19 +54,22 @@
           </span>
           <div class="seller-option-copy">
             <strong>دیجی‌کالا</strong>
-            <small>اتصال حساب و دریافت محصولات فروشنده</small>
+            <small>دریافت محصولات با لینک فروشگاه یا Open API Token</small>
           </div>
-          <form class="digikala-token-form" method="post" action="/auth/digikala/token">
+          <form class="digikala-token-form" method="post" action="/auth/digikala/source">
+            <label for="digikala-seller-link">لینک عمومی فروشنده</label>
+            <input id="digikala-seller-link" name="seller_link" type="url" maxlength="500" autocomplete="url" placeholder="https://www.digikala.com/seller/GU5ZF/">
+            <span class="source-divider">یا</span>
             <label for="digikala-token">Open API Token</label>
-            <input id="digikala-token" name="digikala_token" type="password" minlength="20" maxlength="5000" required autocomplete="off" placeholder="توکن پنل فروشندگان را وارد کنید">
-            <button class="connect-button digikala-button" type="submit">اتصال و دریافت محصولات</button>
+            <input id="digikala-token" name="digikala_token" type="password" maxlength="5000" autocomplete="off" placeholder="برای دریافت فهرست خصوصی، توکن را وارد کنید">
+            <button class="connect-button digikala-button" type="submit">دریافت محصولات فروشنده</button>
           </form>
           {% if digikala_error %}
-          <p class="token-error" role="alert">توکن تایید نشد. یک توکن فعال با دسترسی Profile و Variant وارد کنید.</p>
+          <p class="token-error" role="alert">لینک یا توکن تأیید نشد. لینک صفحه فروشنده یا یک توکن فعال وارد کنید.</p>
           {% endif %}
           <details class="token-help">
-            <summary>توکن را از کجا بگیرم؟</summary>
-            <p>در پنل فروشندگان، بخش «سرویس‌های فروشنده» ← «Self Token» یک توکن با دسترسی خواندن Profile و Variant بسازید.</p>
+            <summary>تفاوت لینک و توکن چیست؟</summary>
+            <p>لینک، همه محصولات عمومی فروشگاه را می‌خواند. توکن Self Token فهرست کامل پنل شامل قیمت و موجودی را دریافت می‌کند.</p>
             <a href="https://seller.digikala.com/pwa/seller-services/self-token" target="_blank" rel="noopener noreferrer">ساخت توکن در پنل دیجی‌کالا</a>
           </details>
         </article>

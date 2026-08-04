@@ -1335,32 +1335,56 @@ def connect_basalam() -> RedirectResponse:
     return response
 
 
-@app.post("/auth/digikala/token")
-async def connect_digikala_token(
+@app.post("/auth/digikala/source")
+async def connect_digikala_source(
     background_tasks: BackgroundTasks,
-    digikala_token: Annotated[str, Form(min_length=20, max_length=5000)],
+    seller_link: Annotated[str | None, Form(max_length=500)] = None,
+    digikala_token: Annotated[str | None, Form(max_length=5000)] = None,
 ) -> RedirectResponse:
-    token = digikala_token.strip()
+    token = (digikala_token or "").strip()
+    link = (seller_link or "").strip()
+    seller_code = digikala.seller_code(link) if link else None
     try:
-        profile = await digikala.profile(token)
-        seller_id = int(profile["seller_id"])
+        if token:
+            if len(token) < 20:
+                raise ValueError("token is too short")
+            profile = await digikala.profile(token)
+            seller_id = int(profile["seller_id"])
+            seller_title = (
+                profile.get("seller_name")
+                or profile.get("secondary_business_name")
+                or f"فروشنده دیجی‌کالا {seller_id}"
+            )
+            user_name = " ".join(
+                part
+                for part in (profile.get("first_name"), profile.get("last_name"))
+                if part
+            ) or seller_title
+            stored_source = token
+            connection_mode = "token"
+        elif seller_code:
+            catalog = await digikala.public_catalog(seller_code)
+            seller = catalog["seller"]
+            seller_id = int(seller["id"])
+            seller_title = seller.get("title") or f"فروشنده دیجی‌کالا {seller_code}"
+            user_name = seller_title
+            stored_source = f"public-seller:{seller_code}"
+            connection_mode = "public_link"
+        else:
+            raise ValueError("missing or invalid Digikala source")
         if seller_id <= 0:
             raise ValueError("invalid seller id")
     except (DigikalaError, KeyError, TypeError, ValueError):
-        logger.warning("digikala_token_connection_rejected")
-        return RedirectResponse("/login?digikala_error=invalid_token", status_code=303)
+        logger.warning("digikala_source_connection_rejected")
+        return RedirectResponse("/login?digikala_error=invalid_source", status_code=303)
 
-    # Digikala and Basalam may use the same positive numeric identifier. Keeping
-    # Digikala identities negative preserves the existing session/account schema.
-    user_id = -seller_id
-    seller_title = (
-        profile.get("seller_name")
-        or profile.get("secondary_business_name")
-        or f"فروشنده دیجی‌کالا {seller_id}"
+    # Public links are imports, not authentication. Keep them in a separate ID
+    # namespace so a public URL can never overwrite a private token connection.
+    user_id = (
+        -seller_id
+        if connection_mode == "token"
+        else -(1_000_000_000 + seller_id)
     )
-    user_name = " ".join(
-        part for part in (profile.get("first_name"), profile.get("last_name")) if part
-    ) or seller_title
     with connection() as db:
         db.execute(
             """INSERT INTO accounts
@@ -1378,7 +1402,7 @@ async def connect_digikala_token(
                 seller_id,
                 seller_title,
                 user_name,
-                encrypt_token(token),
+                encrypt_token(stored_source),
                 None,
                 None,
                 now_iso(),
@@ -1392,7 +1416,12 @@ async def connect_digikala_token(
         title="فروشگاه دیجی‌کالا وصل شد",
         body="دقیقه فهرست محصولات، قیمت و موجودی فروشگاه را دریافت می‌کند.",
         target_url="/merchant",
-        metadata={"marketplace": "digikala", "seller_id": seller_id},
+        metadata={
+            "marketplace": "digikala",
+            "seller_id": seller_id,
+            "connection_mode": connection_mode,
+            **({"seller_code": seller_code} if seller_code else {}),
+        },
     )
     background_tasks.add_task(merchant_sync.sync_user, user_id)
     response = RedirectResponse("/merchant", status_code=303)
@@ -1885,7 +1914,7 @@ def _legacy_demo_only() -> None:
     if not settings.demo_mode:
         raise HTTPException(
             410,
-            "این مسیر قدیمی غیرفعال است؛ از داشبورد پیشنهاد دهنده هوشمند قیمت استفاده کنید.",
+            "این مسیر قدیمی غیرفعال است؛ از داشبورد پیشنهاد دهنده هوشمند لحظه‌ای قیمت استفاده کنید.",
         )
 
 

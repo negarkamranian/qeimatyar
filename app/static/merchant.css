@@ -77,6 +77,7 @@ button, input { font: inherit; }
 .digikala-token-form input { width: 100%; min-width: 0; padding: 11px; border: 1px solid var(--line); border-radius: 9px; direction: ltr; text-align: left; outline: none; font-size: 10px; }
 .digikala-token-form input:focus { border-color: #ef4056; box-shadow: 0 0 0 3px rgba(239,64,86,.1); }
 .digikala-token-form .connect-button { grid-column: auto; margin-top: 0; }
+.source-divider { color: var(--muted); font-size: 9px; text-align: center; }
 .token-error { grid-column: 1 / -1; margin: 0; color: #b4233b; font-size: 9px; line-height: 1.8; }
 .token-help { grid-column: 1 / -1; color: var(--muted); font-size: 9px; }
 .token-help summary { cursor: pointer; color: #52605b; }

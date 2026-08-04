@@ -32,10 +32,10 @@
 </div>
 
 <section class="card table-card users-table-card">
-  <div class="card-head"><div><h2>فهرست غرفه‌ها</h2><p class="subtle">برای جزئیات حساب و محصولات، نام کاربر را انتخاب کنید.</p></div></div>
+  <div class="card-head"><div><h2>فهرست غرفه‌ها</h2><p class="subtle">برای جزئیات حساب و محصولات، نام غرفه را انتخاب کنید.</p></div></div>
   <div class="table-wrap">
     <table class="users-table">
-      <thead><tr><th>غرفه</th><th>کاربر</th><th>محصولات</th><th>سلامت اتصال</th><th>آخرین همگام‌سازی</th><th>جزئیات</th></tr></thead>
+      <thead><tr><th>غرفه</th><th>کاربر</th><th>محصولات</th><th>سلامت اتصال</th><th>آخرین همگام‌سازی</th></tr></thead>
       <tbody>
         {% for user in users %}
         <tr
@@ -44,10 +44,10 @@
           data-products="{{ 'synced' if user.products_synced else 'empty' }}"
         >
           <td class="cell-title">
-            <strong><a href="https://basalam.com/s/{{ user.vendor_id }}" target="_blank" rel="noopener">{{ user.vendor_title }} ↗</a></strong>
+            <strong><a href="/admin/users/{{ user.user_id }}">{{ user.vendor_title }}</a></strong>
             <small>شناسه غرفه: {{ user.vendor_id }}</small>
           </td>
-          <td><a href="/admin/users/{{ user.user_id }}">{{ user.user_name or "بدون نام" }}</a></td>
+          <td>{{ user.user_name or "بدون نام" }}</td>
           <td>
             {% if user.products_synced %}
             <span class="badge">{{ user.product_count }} محصول</span>
@@ -67,12 +67,11 @@
             {% endif %}
           </td>
           <td class="subtle">{{ user.last_synced_at[:16]|replace('T', ' ') if user.last_synced_at else "هنوز انجام نشده" }}</td>
-          <td><a class="badge inactive" href="/admin/users/{{ user.user_id }}">مشاهده ←</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="empty-state">هنوز کاربری متصل نشده است.</td></tr>
+        <tr><td colspan="5" class="empty-state">هنوز کاربری متصل نشده است.</td></tr>
         {% endfor %}
-        <tr id="users-filter-empty" hidden><td colspan="6" class="empty-state">کاربری با این فیلترها پیدا نشد.</td></tr>
+        <tr id="users-filter-empty" hidden><td colspan="5" class="empty-state">کاربری با این فیلترها پیدا نشد.</td></tr>
       </tbody>
     </table>
   </div>

@@ -13,11 +13,15 @@ from app.sessions import COOKIE_NAME, read_session
 
 SELLER_ID = 7612345
 USER_ID = -SELLER_ID
+PUBLIC_USER_ID = -(1_000_000_000 + SELLER_ID)
 
 
 def _cleanup():
     with connection() as db:
-        db.execute("DELETE FROM accounts WHERE user_id=?", (USER_ID,))
+        db.execute(
+            "DELETE FROM accounts WHERE user_id IN (?, ?)",
+            (USER_ID, PUBLIC_USER_ID),
+        )
 
 
 def test_digikala_variants_reads_every_page(monkeypatch):
@@ -42,8 +46,42 @@ def test_digikala_variants_reads_every_page(monkeypatch):
     assert [item["product_id"] for item in variants] == [1, 2, 3]
 
 
+def test_digikala_seller_link_parser_accepts_only_public_seller_links():
+    client = DigikalaClient()
+
+    assert client.seller_code("https://www.digikala.com/seller/GU5ZF/") == "GU5ZF"
+    assert client.seller_code("digikala.com/seller/gu5zf") == "GU5ZF"
+    assert client.seller_code("https://www.digikala.com/product/dkp-1/") is None
+    assert client.seller_code("https://example.com/seller/GU5ZF/") is None
+
+
+def test_digikala_public_catalog_reads_every_page(monkeypatch):
+    client = DigikalaClient()
+    pages = []
+
+    async def fake_public_request(path, **kwargs):
+        page = kwargs["params"]["page"]
+        pages.append(page)
+        return {
+            "status": 200,
+            "data": {
+                "seller": {"id": SELLER_ID, "code": "GU5ZF", "title": "فروشگاه تست"},
+                "products": [{"id": page}],
+                "pager": {"total_pages": 3},
+            },
+        }
+
+    monkeypatch.setattr(client, "_public_request", fake_public_request)
+    catalog = asyncio.run(client.public_catalog("GU5ZF"))
+
+    assert pages == [1, 2, 3]
+    assert catalog["seller"]["id"] == SELLER_ID
+    assert [item["id"] for item in catalog["products"]] == [1, 2, 3]
+
+
 def test_digikala_token_connection_validates_and_encrypts_token(monkeypatch):
     init_db()
+    _cleanup()
     token = "dk-open-api-token-that-is-long-enough"
 
     async def fake_profile(received_token):
@@ -64,7 +102,7 @@ def test_digikala_token_connection_validates_and_encrypts_token(monkeypatch):
     try:
         with TestClient(app) as client:
             response = client.post(
-                "/auth/digikala/token",
+                "/auth/digikala/source",
                 data={"digikala_token": token},
                 follow_redirects=False,
             )
@@ -82,6 +120,104 @@ def test_digikala_token_connection_validates_and_encrypts_token(monkeypatch):
         assert token not in account["access_token"]
     finally:
         _cleanup()
+
+
+def test_digikala_public_link_connection_stores_import_source(monkeypatch):
+    init_db()
+    _cleanup()
+    with connection() as db:
+        db.execute(
+            """INSERT INTO accounts
+            (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,
+             sync_status,marketplace)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                USER_ID,
+                SELLER_ID,
+                "اتصال خصوصی",
+                "فروشنده خصوصی",
+                encrypt_token("private-token-must-not-be-overwritten"),
+                now_iso(),
+                "idle",
+                "digikala",
+            ),
+        )
+
+    async def fake_catalog(seller_code):
+        assert seller_code == "GU5ZF"
+        return {
+            "seller": {"id": SELLER_ID, "code": seller_code, "title": "فروشگاه عمومی"},
+            "products": [{"id": 101}],
+        }
+
+    async def fake_sync(user_id):
+        assert user_id == PUBLIC_USER_ID
+        return {"ok": True}
+
+    monkeypatch.setattr("app.main.digikala.public_catalog", fake_catalog)
+    monkeypatch.setattr("app.main.merchant_sync.sync_user", fake_sync)
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/auth/digikala/source",
+                data={"seller_link": "https://www.digikala.com/seller/GU5ZF/"},
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/merchant"
+        assert read_session(response.cookies.get(COOKIE_NAME)) == PUBLIC_USER_ID
+        with connection() as db:
+            account = db.execute(
+                "SELECT * FROM accounts WHERE user_id=?", (PUBLIC_USER_ID,)
+            ).fetchone()
+        assert account["vendor_title"] == "فروشگاه عمومی"
+        assert decrypt_token(account["access_token"]) == "public-seller:GU5ZF"
+        with connection() as db:
+            private_account = db.execute(
+                "SELECT access_token FROM accounts WHERE user_id=?", (USER_ID,)
+            ).fetchone()
+        assert decrypt_token(private_account["access_token"]) == (
+            "private-token-must-not-be-overwritten"
+        )
+    finally:
+        _cleanup()
+
+
+def test_digikala_public_products_are_normalized(monkeypatch):
+    async def fake_catalog(seller_code):
+        assert seller_code == "GU5ZF"
+        return {
+            "seller": {"id": SELLER_ID},
+            "products": [
+                {
+                    "id": 101,
+                    "title_fa": "محصول عمومی",
+                    "images": {"main": {"url": ["https://example.com/product.jpg"]}},
+                    "default_variant": {
+                        "marketable_stock": 4,
+                        "price": {"selling_price": 5_200_000},
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr("app.merchant_sync.digikala.public_catalog", fake_catalog)
+    products = asyncio.run(
+        merchant_sync._remote_products(
+            {"marketplace": "digikala"}, "public-seller:GU5ZF"
+        )
+    )
+
+    assert products == [
+        {
+            "id": 101,
+            "title": "محصول عمومی",
+            "price": 520_000,
+            "stock": 4,
+            "image_url": "https://example.com/product.jpg",
+        }
+    ]
 
 
 def test_digikala_sync_groups_variants_into_all_products(monkeypatch):

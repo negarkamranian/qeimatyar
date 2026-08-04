@@ -85,12 +85,18 @@ class MerchantSyncService:
         if account.get("marketplace") != "digikala":
             return await basalam.products(token, account["vendor_id"])
 
+        if token.startswith("public-seller:"):
+            catalog = await digikala.public_catalog(token.partition(":")[2])
+            return self._public_digikala_products(catalog["products"])
+
         variants = await digikala.variants(token)
         products: dict[int, dict[str, Any]] = {}
         for item in variants:
             try:
                 product_id = int(item.get("product_id") or 0)
             except (TypeError, ValueError):
+                continue
+            if product_id <= 0:
                 continue
             if product_id <= 0:
                 continue
@@ -120,6 +126,49 @@ class MerchantSyncService:
             if not product["image_url"] and item.get("image_src"):
                 product["image_url"] = item["image_src"]
         return list(products.values())
+
+    def _public_digikala_products(
+        self, products: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for item in products:
+            try:
+                product_id = int(item.get("id") or 0)
+            except (TypeError, ValueError):
+                continue
+            variant = item.get("default_variant") or {}
+            price_data = variant.get("price") or {}
+            try:
+                price_rial = int(price_data.get("selling_price") or 0)
+                stock = int(
+                    variant.get("marketable_stock")
+                    or price_data.get("marketable_stock")
+                    or 0
+                )
+            except (TypeError, ValueError):
+                price_rial = 0
+                stock = 0
+            main_image = (
+                ((item.get("images") or {}).get("main") or {}).get("url") or []
+            )
+            normalized.append(
+                {
+                    "id": product_id,
+                    "title": (
+                        item.get("title_fa")
+                        or item.get("title_en")
+                        or "محصول بدون نام"
+                    ),
+                    "price": round(price_rial / settings.digikala_price_divisor),
+                    "stock": stock,
+                    "image_url": (
+                        main_image[0]
+                        if isinstance(main_image, list) and main_image
+                        else ""
+                    ),
+                }
+            )
+        return normalized
 
     async def sync_user(self, user_id: int) -> dict[str, Any]:
         lock = self._lock(user_id)

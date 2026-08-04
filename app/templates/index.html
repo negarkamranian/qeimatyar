@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=20260804-9">
+  <link rel="stylesheet" href="/static/app.css?v=20260804-10">
 </head>
 <body>
   <header class="site-header">
@@ -21,7 +21,7 @@
         <img src="/static/logo.jpg" alt="دقیقه" onload="this.nextElementSibling.hidden=true" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
         <span class="brand-mark-fallback">ق</span>
       </span>
-      <span><strong>دقیقه</strong><small>پیشنهاد دهنده هوشمند قیمت</small></span>
+      <span><strong>دقیقه</strong><small>پیشنهاد دهنده هوشمند لحظه‌ای قیمت</small></span>
     </a>
     <nav class="header-links">
       <a class="merchant-link" href="{{ '/merchant' if merchant_connected else '/login' }}">
@@ -110,11 +110,31 @@
       </div>
 
       <div class="analysis-workspace">
-        <div class="pricing-column">
+      <div class="pricing-column">
       <div class="pricing-card">
-        <div class="selected-price">
-          <small id="selected-price-label">قیمت محصول وارد شده</small>
-          <div><strong id="selected-price">—</strong><span>تومان</span></div>
+        <div class="pricing-overview">
+          <div class="selected-price">
+            <small id="selected-price-label">قیمت محصول وارد شده</small>
+            <div><strong id="selected-price">—</strong><span>تومان</span></div>
+          </div>
+
+          <div class="recommendation">
+            <div class="recommended-price-block">
+              <small>پیشنهاد دقیقه</small>
+              <div><strong id="recommended-price">—</strong><span>تومان</span></div>
+            </div>
+            <div class="recommendation-actions">
+              <button id="use-recommended">اعمال این قیمت</button>
+              <button id="set-price-basalam" class="update-price-button" hidden>
+                <span></span>تنظیم قیمت در باسلام
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="price-risk" class="price-risk neutral" role="status" aria-live="polite">
+          <strong id="risk-title">قیمت در محدوده‌ی پیشنهادی</strong>
+          <p id="risk-copy">در این محدوده، اثر کشش قیمت کم است و پیشنهاد بازار منطقی به‌نظر می‌رسد.</p>
         </div>
 
         <div class="price-slider">
@@ -140,16 +160,7 @@
           </div>
         </div>
 
-        <div class="recommendation">
-          <div>
-            <small>پیشنهاد دقیقه</small>
-            <strong id="recommended-price">—</strong>
-            <span>تومان</span>
-          </div>
-           <button id="use-recommended">اعمال این قیمت</button>
-           <button id="set-price-basalam" class="update-price-button" hidden>
-             <span></span>تنظیم قیمت در باسلام
-           </button>
+        <div class="pricing-preferences">
           <div class="recommendation-feedback">
             <small class="feedback-prompt">این پیشنهاد چطور بود؟</small>
             <div class="feedback-buttons" role="group" aria-label="بازخورد قیمت پیشنهادی">
@@ -162,21 +173,17 @@
             </div>
             <small id="recommendation-feedback-status" class="feedback-status" role="status" aria-live="polite"></small>
           </div>
+          <label class="foreign-pricing-toggle" for="include-foreign-prices">
+            <span>
+              <strong>لحاظ قیمت بازارهای خارجی در پیشنهاد</strong>
+              <small>ترندیول ترکیه و نون امارات · پیش‌فرض خاموش</small>
+            </span>
+            <input id="include-foreign-prices" type="checkbox" role="switch">
+            <i aria-hidden="true"></i>
+          </label>
           <button id="update-basalam-price" class="update-price-button" hidden>
             <span></span>به‌روزرسانی قیمت در باسلام
           </button>
-        </div>
-        <label class="foreign-pricing-toggle" for="include-foreign-prices">
-          <span>
-            <strong>لحاظ قیمت بازارهای خارجی در پیشنهاد</strong>
-            <small>ترندیول ترکیه و نون امارات · پیش‌فرض خاموش</small>
-          </span>
-          <input id="include-foreign-prices" type="checkbox" role="switch">
-          <i aria-hidden="true"></i>
-        </label>
-        <div id="price-risk" class="price-risk neutral" role="status" aria-live="polite">
-          <strong id="risk-title">قیمت در محدوده‌ی پیشنهادی</strong>
-          <p id="risk-copy">در این محدوده، اثر کشش قیمت کم است و پیشنهاد بازار منطقی به‌نظر می‌رسد.</p>
         </div>
       </div>
 

@@ -6,12 +6,14 @@ from app.config import (
 )
 from app.db import connection, init_db, now_iso
 from app.main import (
+    app,
     admin_dashboard_context,
     admin_login,
     admin_update_settings,
     clear_all_merchant_notifications,
 )
 from pathlib import Path
+from fastapi.testclient import TestClient
 
 
 def _call_admin_update_settings(**kwargs):
@@ -42,6 +44,32 @@ def test_admin_panel_exposes_connected_users():
 
     with connection() as db:
         db.execute("DELETE FROM accounts WHERE user_id IN (9001, 9002)")
+
+
+def test_admin_users_links_merchant_name_and_has_no_details_column():
+    init_db()
+    user_id = 9010
+    with connection() as db:
+        db.execute("DELETE FROM accounts WHERE user_id=?", (user_id,))
+        db.execute(
+            """INSERT INTO accounts
+            (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,sync_status)
+            VALUES(?,?,?,?,?,?,?)""",
+            (user_id, 10010, "غرفه لینک تست", "کاربر لینک تست", "token", now_iso(), "idle"),
+        )
+
+    try:
+        with TestClient(app) as client:
+            client.cookies.set("admin_session", settings.secret)
+            response = client.get("/admin/users")
+
+        assert response.status_code == 200
+        assert f'href="/admin/users/{user_id}">غرفه لینک تست</a>' in response.text
+        assert "<th>جزئیات</th>" not in response.text
+        assert "مشاهده ←" not in response.text
+    finally:
+        with connection() as db:
+            db.execute("DELETE FROM accounts WHERE user_id=?", (user_id,))
 
 
 def test_admin_panel_clears_all_merchant_notifications():

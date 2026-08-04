@@ -14,7 +14,8 @@ def test_seller_login_shows_basalam_and_digikala_connection(monkeypatch):
     assert response.status_code == 200
     assert "باسلام" in response.text
     assert "دیجی‌کالا" in response.text
-    assert 'action="/auth/digikala/token"' in response.text
+    assert 'action="/auth/digikala/source"' in response.text
+    assert 'name="seller_link"' in response.text
     assert 'name="digikala_token"' in response.text
     assert 'href="https://seller.digikala.com/pwa/"' not in response.text
 
