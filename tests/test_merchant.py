@@ -225,7 +225,7 @@ def test_basalam_sync_persists_enrichment_sales_and_price_history(monkeypatch):
         return [{
             "id": 7003,
             "title": "عسل ویژه",
-            "price": 510_000,
+            "price": 5_100_000,
             "inventory": 4,
             "photo": {},
             "category": {"title": "عسل"},
@@ -247,7 +247,7 @@ def test_basalam_sync_persists_enrichment_sales_and_price_history(monkeypatch):
                 "items": [{
                     "id": 881,
                     "quantity": 2,
-                    "price": 490_000,
+                    "price": 4_900_000,
                     "product": {"id": 7003},
                 }],
             },
@@ -259,7 +259,7 @@ def test_basalam_sync_persists_enrichment_sales_and_price_history(monkeypatch):
                 "items": [{
                     "id": 882,
                     "quantity": 5,
-                    "price": 490_000,
+                    "price": 4_900_000,
                     "product": {"id": 7003},
                 }],
             },
@@ -268,8 +268,8 @@ def test_basalam_sync_persists_enrichment_sales_and_price_history(monkeypatch):
     async def fake_price_history(token, product_id, **kwargs):
         return [{
             "change_time": "2026-07-01T00:00:00+00:00",
-            "price": 480_000,
-            "discounted_price": 470_000,
+            "price": 4_800_000,
+            "discounted_price": 4_700_000,
         }]
 
     async def fake_market_search(query):
@@ -305,6 +305,7 @@ def test_basalam_sync_persists_enrichment_sales_and_price_history(monkeypatch):
                 (USER_ID,),
             ).fetchone()
         assert product["category_title"] == "عسل"
+        assert product["current_price"] == 510_000
         assert product["view_count"] == 120
         assert product["sales_count"] == 9
         assert sale["quantity"] == 2
@@ -324,7 +325,7 @@ def test_merchant_sync_reads_products_and_stores_estimate(monkeypatch):
             {
                 "id": 7003,
                 "title": "عسل آویشن ۹۰۰ گرم",
-                "price": 510_000,
+                "price": 5_100_000,
                 "inventory": 4,
                 "photo": {},
             }
@@ -366,6 +367,7 @@ def test_merchant_sync_reads_products_and_stores_estimate(monkeypatch):
                 (USER_ID,),
             ).fetchone()
         assert product["market_suggested"] == 500_000
+        assert product["current_price"] == 510_000
         assert product["market_low"] == 475_000
         assert product["market_high"] == 525_000
         assert account["analytics_status"] == "needs_consent"

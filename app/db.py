@@ -217,6 +217,10 @@ def init_db() -> None:
               ON search_analytics(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_search_analytics_query
               ON search_analytics(query);
+            CREATE TABLE IF NOT EXISTS data_migrations (
+                name TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            );
             """
         )
         account_columns = {
@@ -274,6 +278,51 @@ def init_db() -> None:
         }
         if "product_url" not in button_columns:
             db.execute("ALTER TABLE button_click_metrics ADD COLUMN product_url TEXT")
+
+        migration_done = db.execute(
+            "SELECT 1 FROM data_migrations WHERE name=?",
+            ("basalam_merchant_prices_rial_to_toman_20260805",),
+        ).fetchone()
+        if not migration_done:
+            db.execute(
+                """UPDATE merchant_products
+                SET current_price=CAST(ROUND(current_price / 10.0) AS INTEGER)
+                WHERE current_price > 0
+                  AND user_id IN (
+                    SELECT user_id FROM accounts
+                    WHERE COALESCE(marketplace, 'basalam') = 'basalam'
+                  )
+                  AND (
+                    market_suggested IS NULL
+                    OR current_price >= market_suggested * 5
+                  )"""
+            )
+            db.execute(
+                """UPDATE merchant_sales_events
+                SET unit_price=CAST(ROUND(unit_price / 10.0) AS INTEGER)
+                WHERE unit_price > 0
+                  AND user_id IN (
+                    SELECT user_id FROM accounts
+                    WHERE COALESCE(marketplace, 'basalam') = 'basalam'
+                  )"""
+            )
+            db.execute(
+                """UPDATE merchant_product_price_points
+                SET price=CAST(ROUND(price / 10.0) AS INTEGER),
+                    discounted_price=CASE
+                      WHEN discounted_price IS NULL THEN NULL
+                      ELSE CAST(ROUND(discounted_price / 10.0) AS INTEGER)
+                    END
+                WHERE price > 0
+                  AND user_id IN (
+                    SELECT user_id FROM accounts
+                    WHERE COALESCE(marketplace, 'basalam') = 'basalam'
+                  )"""
+            )
+            db.execute(
+                "INSERT INTO data_migrations(name,applied_at) VALUES(?,?)",
+                ("basalam_merchant_prices_rial_to_toman_20260805", now_iso()),
+            )
 
 
 def seed_demo() -> None:

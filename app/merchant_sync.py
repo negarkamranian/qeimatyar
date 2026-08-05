@@ -60,6 +60,10 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def _basalam_rial_to_toman(value: Any) -> int:
+    return round(_safe_int(value) / 10)
+
+
 def _basalam_product(item: dict[str, Any]) -> dict[str, Any]:
     """Normalize the rich vendor-product response while keeping raw PII out."""
     category = item.get("category")
@@ -67,7 +71,7 @@ def _basalam_product(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": int(item["id"]),
         "title": item.get("title") or item.get("name") or "محصول بدون نام",
-        "price": _safe_int(item.get("price") or item.get("primary_price")),
+        "price": _basalam_rial_to_toman(item.get("price") or item.get("primary_price")),
         "stock": _safe_int(item.get("inventory") or item.get("stock")),
         "image_url": _image_url(item.get("photo")),
         "category_title": _nested_label(category),
@@ -339,7 +343,7 @@ class MerchantSyncService:
                             order_item_id,
                             product_id,
                             max(1, _safe_int(item.get("quantity"), 1)),
-                            _safe_int(item.get("price")),
+                            _basalam_rial_to_toman(item.get("price")),
                             str(sold_at),
                             parcel_status,
                             synced_at,
@@ -367,8 +371,10 @@ class MerchantSyncService:
                             user_id,
                             product_id,
                             str(changed_at),
-                            price,
-                            _safe_int(point.get("discounted_price")) or None,
+                            _basalam_rial_to_toman(price),
+                            _basalam_rial_to_toman(point.get("discounted_price"))
+                            if point.get("discounted_price")
+                            else None,
                             synced_at,
                         ),
                     )

@@ -419,6 +419,13 @@ def _redact_detail(value: Any, request_kwargs: dict[str, Any]) -> Any:
     return clean(value)
 
 
+def _rial_to_toman(value: Any) -> int:
+    try:
+        return round(int(value or 0) / 10)
+    except (TypeError, ValueError):
+        return 0
+
+
 basalam = BasalamClient()
 
 
@@ -559,7 +566,7 @@ async def fetch_basalam_product(product_id: int) -> dict[str, Any]:
                         "title": str(title),
                         "description": str(data.get("description", "")),
                         "brand": str(data.get("brand", {}).get("name", "")) if isinstance(data.get("brand"), dict) else "",
-                        "price": int(data.get("price") or data.get("primary_price") or 0),
+                        "price": _rial_to_toman(data.get("price") or data.get("primary_price")),
                         "image_url": str(data.get("photo") or data.get("image_url", "")) if not isinstance(data.get("photo"), dict) else str((data.get("photo") or {}).get("md", "")),
                         "specs": _flatten_basalam_specs(data.get("params") or data.get("attributes", [])),
                         "product_id": product_id,
