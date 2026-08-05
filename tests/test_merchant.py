@@ -375,6 +375,59 @@ def test_merchant_sync_reads_products_and_stores_estimate(monkeypatch):
         _cleanup()
 
 
+def test_followup_migration_converts_missed_basalam_rial_current_price(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.db.settings.database_path", str(tmp_path / "merchant.db"))
+    init_db()
+    user_id = 991074
+    with connection() as db:
+        db.execute(
+            """INSERT INTO accounts
+            (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,
+             sync_status,marketplace)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                user_id,
+                user_id + 10,
+                "غرفه تست",
+                "کاربر تست",
+                encrypt_token("test-token"),
+                now_iso(),
+                "idle",
+                "basalam",
+            ),
+        )
+        db.execute(
+            """INSERT INTO merchant_products
+            (user_id,product_id,title,current_price,stock,market_suggested,
+             source_counts,synced_at)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                user_id,
+                891074,
+                "روسری مشکی کرپ طرح برجسته دوردوخت",
+                2_280_000,
+                30,
+                650_000,
+                "{}",
+                now_iso(),
+            ),
+        )
+        db.execute(
+            "DELETE FROM data_migrations WHERE name=?",
+            ("basalam_merchant_prices_rial_to_toman_followup_20260805",),
+        )
+
+    init_db()
+
+    with connection() as db:
+        product = db.execute(
+            """SELECT current_price FROM merchant_products
+            WHERE user_id=? AND product_id=891074""",
+            (user_id,),
+        ).fetchone()
+    assert product["current_price"] == 228_000
+
+
 def test_merchant_price_refresh_does_not_fetch_product_catalog(monkeypatch):
     _insert_accounts_and_products()
 

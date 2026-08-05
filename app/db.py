@@ -324,6 +324,27 @@ def init_db() -> None:
                 ("basalam_merchant_prices_rial_to_toman_20260805", now_iso()),
             )
 
+        migration_done = db.execute(
+            "SELECT 1 FROM data_migrations WHERE name=?",
+            ("basalam_merchant_prices_rial_to_toman_followup_20260805",),
+        ).fetchone()
+        if not migration_done:
+            db.execute(
+                """UPDATE merchant_products
+                SET current_price=CAST(ROUND(current_price / 10.0) AS INTEGER)
+                WHERE current_price > 0
+                  AND market_suggested > 0
+                  AND current_price >= market_suggested * 3
+                  AND user_id IN (
+                    SELECT user_id FROM accounts
+                    WHERE COALESCE(marketplace, 'basalam') = 'basalam'
+                  )"""
+            )
+            db.execute(
+                "INSERT INTO data_migrations(name,applied_at) VALUES(?,?)",
+                ("basalam_merchant_prices_rial_to_toman_followup_20260805", now_iso()),
+            )
+
 
 def seed_demo() -> None:
     with connection() as db:
