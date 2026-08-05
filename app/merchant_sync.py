@@ -265,11 +265,19 @@ class MerchantSyncService:
             )
 
         sales_error: Exception | None = None
-        try:
-            parcels = await basalam.vendor_parcels(token, int(account["vendor_id"]))
-        except Exception as exc:
-            sales_error = exc
+        if "vendor.parcel.read" in settings.scopes.split():
+            try:
+                parcels = await basalam.vendor_parcels(token, int(account["vendor_id"]))
+            except Exception as exc:
+                sales_error = exc
+                parcels = []
+        else:
             parcels = []
+            sales_error = BasalamError(
+                "تاریخچه سفارش‌ها در scopeهای فعلی باسلام فعال نیست.",
+                status_code=403,
+                error_kind="missing_scope",
+            )
 
         semaphore = asyncio.Semaphore(5)
 

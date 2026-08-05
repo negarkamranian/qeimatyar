@@ -228,6 +228,7 @@ function productCard(product) {
     <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
     <div class="product-actions">
       <button class="details-toggle" type="button" data-product-toggle="${product.product_id}" aria-expanded="${expanded}">${expanded ? "بستن جزئیات" : "جزئیات محصول"}</button>
+      <a class="elasticity-link" href="/merchant/products/${product.product_id}/elasticity" onclick="recordButtonClick('merchant_elasticity', ${product.product_id})">کشش قیمت</a>
       <a class="analysis-link" href="${analysisUrl}" onclick="recordButtonClick('merchant_analysis', ${product.product_id})">تحلیل بازار</a>
       ${product.market_suggested && state.marketplace === "basalam"
         ? `<button class="set-price-btn" onclick="setPriceInBasalam(${product.product_id}, ${product.market_suggested || 0})">تنظیم قیمت در باسلام به ${toman(product.market_suggested || 0)} تومان</button>`

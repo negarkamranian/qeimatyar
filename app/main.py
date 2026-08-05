@@ -27,6 +27,7 @@ from app.config import refresh_settings, save_admin_overrides, settings, _env_fi
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
 from app.digikala import DigikalaError, digikala
+from app.elasticity import ElasticityPoint, analyze_elasticity
 from app.llm import (
     WebSearchResult,
     optimize_marketplace_queries,
@@ -530,6 +531,16 @@ class RangeOverrideInput(BaseModel):
     max_price: int | None = Field(default=None, gt=0)
 
 
+class ElasticityObservationInput(BaseModel):
+    period: str = Field(min_length=4, max_length=40)
+    price: int = Field(gt=0)
+    units: int = Field(ge=0, le=10_000_000)
+
+
+class ElasticityObservationsInput(BaseModel):
+    observations: list[ElasticityObservationInput] = Field(min_length=1, max_length=365)
+
+
 def create_merchant_notification(
     user_id: int,
     *,
@@ -662,6 +673,22 @@ def merchant_page(request: Request):
         request=request,
         name="merchant.html",
         context={"account": account[0]},
+    )
+
+
+@app.get("/merchant/products/{product_id}/elasticity", response_class=HTMLResponse)
+def merchant_elasticity_page(product_id: int, request: Request):
+    user_id = _merchant_user(request)
+    product = rows(
+        "SELECT title FROM merchant_products WHERE user_id=? AND product_id=?",
+        (user_id, product_id),
+    )
+    if not product:
+        raise HTTPException(404, "محصول پیدا نشد.")
+    return templates.TemplateResponse(
+        request=request,
+        name="merchant_elasticity.html",
+        context={"product": product[0], "product_id": product_id},
     )
 
 
@@ -1783,6 +1810,89 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
         },
         "products": products,
     }
+
+
+def _merchant_elasticity_points(user_id: int, product_id: int) -> list[ElasticityPoint]:
+    points = [
+        ElasticityPoint(
+            price=float(item["price"]),
+            units=float(item["units"]),
+            period=item["period"],
+            source=item["source"],
+        )
+        for item in rows(
+            """SELECT period,price,units,source
+            FROM merchant_elasticity_observations
+            WHERE user_id=? AND product_id=? ORDER BY period""",
+            (user_id, product_id),
+        )
+    ]
+    # Parcel history is optional. When consent is unavailable this simply returns no API points.
+    points.extend(
+        ElasticityPoint(
+            price=float(item["price"]),
+            units=float(item["units"]),
+            period=item["period"],
+            source="basalam_api",
+        )
+        for item in rows(
+            """SELECT substr(sold_at,1,10) AS period,unit_price AS price,
+            SUM(quantity) AS units
+            FROM merchant_sales_events
+            WHERE user_id=? AND product_id=? AND unit_price>0
+            GROUP BY substr(sold_at,1,10),unit_price ORDER BY period""",
+            (user_id, product_id),
+        )
+    )
+    return points
+
+
+@app.get("/api/merchant/products/{product_id}/elasticity")
+def merchant_elasticity(product_id: int, request: Request) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    product_rows = rows(
+        "SELECT product_id,title,current_price,market_suggested FROM merchant_products WHERE user_id=? AND product_id=?",
+        (user_id, product_id),
+    )
+    if not product_rows:
+        raise HTTPException(404, "محصول پیدا نشد.")
+    product = product_rows[0]
+    analysis = analyze_elasticity(
+        _merchant_elasticity_points(user_id, product_id),
+        current_price=int(product["current_price"] or 0),
+        market_suggested=product["market_suggested"],
+    )
+    return {"product": product, "analysis": analysis}
+
+
+@app.post("/api/merchant/products/{product_id}/elasticity")
+def save_merchant_elasticity(
+    product_id: int,
+    payload: ElasticityObservationsInput,
+    request: Request,
+) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    exists = rows(
+        "SELECT 1 FROM merchant_products WHERE user_id=? AND product_id=?",
+        (user_id, product_id),
+    )
+    if not exists:
+        raise HTTPException(404, "محصول پیدا نشد.")
+    with connection() as db:
+        db.execute(
+            "DELETE FROM merchant_elasticity_observations WHERE user_id=? AND product_id=? AND source='manual'",
+            (user_id, product_id),
+        )
+        db.executemany(
+            """INSERT INTO merchant_elasticity_observations
+            (user_id,product_id,period,price,units,source,created_at)
+            VALUES(?,?,?,?,?,'manual',?)""",
+            [
+                (user_id, product_id, item.period.strip(), item.price, item.units, now_iso())
+                for item in payload.observations
+            ],
+        )
+    return merchant_elasticity(product_id, request)
 
 
 @app.post("/api/merchant/analyze-product/{product_id}")

@@ -142,6 +142,8 @@ button, input { font: inherit; }
 .product-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
 .analysis-link { border-radius: 7px; padding: 7px 10px; background: var(--green); color: #fff; text-decoration: none; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .analysis-link:hover { background: #0f3c31; }
+.elasticity-link { border: 1px solid #d7a45e; border-radius: 7px; padding: 7px 10px; background: #fffaf3; color: #9a6124; text-decoration: none; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.elasticity-link:hover { background: #fff1dd; }
 .details-toggle { border: 1px solid #cfd8d4; border-radius: 7px; padding: 7px 10px; background: #fff; color: #40534c; cursor: pointer; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .details-toggle:hover { background: var(--paper); }
 .set-price-btn {

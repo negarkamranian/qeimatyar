@@ -29,7 +29,7 @@ def test_authorization_url_contains_only_configured_read_scopes(monkeypatch):
     assert query["state"] == ["secure-state"]
 
 
-def test_authorization_url_adds_sales_history_scope_for_stale_deployment(monkeypatch):
+def test_authorization_url_does_not_request_unavailable_sales_scope(monkeypatch):
     monkeypatch.setattr(
         "app.basalam.settings",
         SimpleNamespace(
@@ -39,9 +39,7 @@ def test_authorization_url_adds_sales_history_scope_for_stale_deployment(monkeyp
         ),
     )
     query = parse_qs(urlparse(BasalamClient().authorization_url("renew-state")).query)
-    assert query["scope"] == [
-        "customer.profile.read vendor.profile.read vendor.product.read vendor.parcel.read"
-    ]
+    assert query["scope"] == ["customer.profile.read vendor.profile.read vendor.product.read"]
 
 
 def test_authorization_url_rejects_write_scope(monkeypatch):

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>کشش قیمت {{ product.title }} — دقیقه</title>
+  <link rel="stylesheet" href="/static/merchant.css?v=20260805-4">
+  <link rel="stylesheet" href="/static/merchant-elasticity.css?v=20260805-1">
+</head>
+<body>
+  <header class="simple-header">
+    <a class="brand" href="/merchant"><span class="brand-mark"><span class="brand-mark-fallback">ق</span></span><span><strong>دقیقه</strong><small>تحلیل قیمت محصولات</small></span></a>
+    <div class="account-actions"><a href="/merchant">محصولات غرفه</a><form method="post" action="/logout"><button>خروج</button></form></div>
+  </header>
+  <main class="elasticity-main" data-product-id="{{ product_id }}">
+    <a class="back-link" href="/merchant">← بازگشت به محصولات غرفه</a>
+    <header class="elasticity-head"><p class="eyebrow">تحلیل کشش قیمت</p><h1>{{ product.title }}</h1><p>با واردکردن فروش هر دوره، اثر تغییر قیمت روی تقاضا و درآمد را برآورد کنید.</p></header>
+    <section class="elasticity-note"><strong>داده فروش باسلام</strong><span>با اسکوپ فعلی شما ممکن است تاریخچه سفارش‌ها قابل دریافت نباشد. در این حالت داده‌ها را دستی وارد کنید؛ نتیجه با برچسب منبع و سطح اطمینان نمایش داده می‌شود.</span></section>
+    <section class="elasticity-layout">
+      <form id="elasticity-form" class="elasticity-form">
+        <div class="section-title"><div><h2>داده‌های تاریخی</h2><p>هر ردیف یک روز، هفته یا ماه است؛ همه ردیف‌ها باید از یک نوع دوره باشند.</p></div><button type="button" id="add-observation" class="sync-button">افزودن ردیف</button></div>
+        <div id="observations" class="observations"></div>
+        <button class="sync-button primary" type="submit">محاسبه کشش و درآمد</button>
+      </form>
+      <section id="elasticity-result" class="elasticity-result"><div class="result-empty">داده‌ها را وارد کنید تا تحلیل محصول اینجا نمایش داده شود.</div></section>
+    </section>
+  </main>
+  <script src="/static/merchant-elasticity.js?v=20260805-1" defer></script>
+</body>
+</html>

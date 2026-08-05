@@ -123,6 +123,18 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_merchant_price_points_product_date
               ON merchant_product_price_points(user_id, product_id, changed_at DESC);
+            CREATE TABLE IF NOT EXISTS merchant_elasticity_observations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                product_id INTEGER NOT NULL,
+                period TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                units INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'manual',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_merchant_elasticity_product
+              ON merchant_elasticity_observations(user_id, product_id, period);
             CREATE TABLE IF NOT EXISTS merchant_market_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,

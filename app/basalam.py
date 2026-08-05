@@ -59,12 +59,11 @@ class BasalamClient:
     def requested_scopes(self) -> list[str]:
         """Return the least-privilege scopes required by the current product.
 
-        Analytics scopes are added in code so an older deployment environment
-        cannot silently issue another token that still lacks sales-history
-        consent.
+        Optional analytics scopes are used only when explicitly configured.
+        The product remains fully usable with the catalog-only scopes.
         """
         configured = settings.scopes.split()
-        scopes = list(dict.fromkeys([*configured, *sorted(ANALYTICS_OAUTH_SCOPES)]))
+        scopes = list(dict.fromkeys(configured))
         unsafe_scopes = [scope for scope in scopes if not scope.endswith(".read")]
         if unsafe_scopes:
             raise ValueError(

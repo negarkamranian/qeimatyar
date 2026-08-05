@@ -33,7 +33,7 @@ def test_basalam_connect_route_is_registered(monkeypatch):
     assert response.status_code == 503
 
 
-def test_basalam_renewal_redirect_requests_sales_history_scope(monkeypatch):
+def test_basalam_renewal_redirect_keeps_configured_scopes(monkeypatch):
     monkeypatch.setattr(settings, "client_id", "client-id")
     monkeypatch.setattr(settings, "client_secret", "client-secret")
     monkeypatch.setattr(
@@ -52,4 +52,6 @@ def test_basalam_renewal_redirect_requests_sales_history_scope(monkeypatch):
 
     assert response.status_code == 307
     query = parse_qs(urlparse(response.headers["location"]).query)
-    assert "vendor.parcel.read" in query["scope"][0].split()
+    assert query["scope"][0].split() == [
+        "customer.profile.read", "vendor.profile.read", "vendor.product.read"
+    ]
