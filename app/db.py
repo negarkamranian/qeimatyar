@@ -345,6 +345,41 @@ def init_db() -> None:
                 ("basalam_merchant_prices_rial_to_toman_followup_20260805", now_iso()),
             )
 
+        migration_done = db.execute(
+            "SELECT 1 FROM data_migrations WHERE name=?",
+            ("basalam_merchant_prices_rial_to_toman_cutoff_20260805",),
+        ).fetchone()
+        if not migration_done:
+            cutoff_row = db.execute(
+                """SELECT applied_at FROM data_migrations
+                WHERE name IN (
+                  'basalam_merchant_prices_rial_to_toman_20260805',
+                  'basalam_merchant_prices_rial_to_toman_followup_20260805'
+                )
+                ORDER BY applied_at DESC LIMIT 1"""
+            ).fetchone()
+            cutoff = cutoff_row["applied_at"] if cutoff_row else now_iso()
+            db.execute(
+                """UPDATE merchant_products
+                SET current_price=CAST(ROUND(current_price / 10.0) AS INTEGER)
+                WHERE current_price >= 1000000
+                  AND synced_at <= ?
+                  AND user_id IN (
+                    SELECT user_id FROM accounts
+                    WHERE COALESCE(marketplace, 'basalam') = 'basalam'
+                  )
+                  AND (
+                    market_suggested IS NULL
+                    OR market_suggested <= 0
+                    OR current_price >= market_suggested * 3
+                  )""",
+                (cutoff,),
+            )
+            db.execute(
+                "INSERT INTO data_migrations(name,applied_at) VALUES(?,?)",
+                ("basalam_merchant_prices_rial_to_toman_cutoff_20260805", now_iso()),
+            )
+
 
 def seed_demo() -> None:
     with connection() as db:

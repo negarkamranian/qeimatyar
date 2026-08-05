@@ -2171,6 +2171,13 @@ def _legacy_demo_only() -> None:
         )
 
 
+def _basalam_api_price_toman(value: Any) -> int:
+    try:
+        return round(int(value or 0) / 10)
+    except (TypeError, ValueError):
+        return 0
+
+
 @app.get("/api/dashboard")
 def dashboard() -> dict[str, Any]:
     _legacy_demo_only()
@@ -2311,7 +2318,7 @@ async def sync_products() -> dict[str, Any]:
                     continue
                 price = match.get("price") or match.get("primaryPrice") or match.get("primary_price")
                 if price:
-                    prices.append(int(price))
+                    prices.append(_basalam_api_price_toman(price))
             return prices
 
         market_prices = await asyncio.gather(*(comparable_prices(item) for item in remote))
@@ -2329,7 +2336,7 @@ async def sync_products() -> dict[str, Any]:
                     item["id"],
                     account["vendor_id"],
                     item.get("title") or item.get("name", "بدون نام"),
-                    int(item.get("price") or item.get("primary_price") or 0),
+                    _basalam_api_price_toman(item.get("price") or item.get("primary_price")),
                     int(item.get("inventory") or item.get("stock") or 0),
                     int(item.get("view_count") or item.get("views") or 0),
                     int(item.get("sales_count") or item.get("sales") or 0),
