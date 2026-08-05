@@ -32,7 +32,7 @@
 </div>
 
 <section class="card table-card users-table-card">
-  <div class="card-head"><div><h2>فهرست غرفه‌ها</h2><p class="subtle">برای جزئیات حساب و محصولات، نام غرفه را انتخاب کنید.</p></div></div>
+  <div class="card-head"><div><h2>فهرست غرفه‌ها</h2><p class="subtle">نام غرفه به صفحه باسلام می‌رود؛ تعداد محصولات را برای دیدن فهرست باز کنید.</p></div></div>
   <div class="table-wrap">
     <table class="users-table">
       <thead><tr><th>غرفه</th><th>کاربر</th><th>محصولات</th><th>سلامت اتصال</th><th>آخرین همگام‌سازی</th></tr></thead>
@@ -40,17 +40,20 @@
         {% for user in users %}
         <tr
           data-search="{{ user.vendor_title }} {{ user.vendor_id }} {{ user.user_name or '' }}"
+          data-user-id="{{ user.user_id }}"
           data-health="{% if user.sync_error or user.token_expired %}attention{% elif user.is_active %}syncing{% else %}healthy{% endif %}"
           data-products="{{ 'synced' if user.products_synced else 'empty' }}"
         >
           <td class="cell-title">
-            <strong><a href="/admin/users/{{ user.user_id }}">{{ user.vendor_title }}</a></strong>
+            <strong><a href="https://basalam.com/s/{{ user.vendor_id }}" target="_blank" rel="noopener">{{ user.vendor_title }} ↗</a></strong>
             <small>شناسه غرفه: {{ user.vendor_id }}</small>
           </td>
           <td>{{ user.user_name or "بدون نام" }}</td>
           <td>
             {% if user.products_synced %}
-            <span class="badge">{{ user.product_count }} محصول</span>
+            <button class="product-count-toggle" type="button" data-products-toggle="{{ user.user_id }}" aria-expanded="false" aria-controls="products-{{ user.user_id }}">
+              <span class="badge">{{ user.product_count }} محصول</span>
+            </button>
             {% else %}
             <span class="badge inactive">بدون محصول</span>
             {% endif %}
@@ -68,6 +71,23 @@
           </td>
           <td class="subtle">{{ user.last_synced_at[:16]|replace('T', ' ') if user.last_synced_at else "هنوز انجام نشده" }}</td>
         </tr>
+        {% if user.products_synced %}
+        <tr id="products-{{ user.user_id }}" class="products-detail-row" data-details-for="{{ user.user_id }}" hidden>
+          <td colspan="5">
+            <div class="products-detail">
+              <div class="products-detail-head"><strong>محصولات {{ user.vendor_title }}</strong><span class="subtle">{{ user.product_count }} محصول سینک‌شده</span></div>
+              <div class="products-list">
+                {% for product in user.products %}
+                <a class="product-list-item" href="{{ product.product_url }}" target="_blank" rel="noopener">
+                  <span class="product-list-title">{{ product.title or "محصول بدون عنوان" }}</span>
+                  <span class="product-list-meta">{{ product.current_price|default(0, true)|int }} تومان · موجودی {{ product.stock|default(0, true)|int }} ↗</span>
+                </a>
+                {% endfor %}
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
         {% else %}
         <tr><td colspan="5" class="empty-state">هنوز کاربری متصل نشده است.</td></tr>
         {% endfor %}
@@ -88,6 +108,15 @@ document.addEventListener("DOMContentLoaded", function () {
   const empty = document.getElementById("users-filter-empty");
   const rows = [...document.querySelectorAll(".users-table tbody tr[data-health]")];
 
+  document.querySelectorAll("[data-products-toggle]").forEach(button => {
+    button.addEventListener("click", () => {
+      const detail = document.getElementById(`products-${button.dataset.productsToggle}`);
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", String(!expanded));
+      detail.hidden = expanded;
+    });
+  });
+
   function applyFilters() {
     const term = search.value.trim().toLowerCase();
     let visible = 0;
@@ -97,6 +126,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const matchesProducts = products.value === "all" || row.dataset.products === products.value;
       const show = matchesSearch && matchesHealth && matchesProducts;
       row.hidden = !show;
+      const detail = document.querySelector(`[data-details-for="${row.dataset.userId}"]`);
+      if (detail && !show) detail.hidden = true;
       if (show) visible += 1;
     });
     empty.hidden = visible !== 0 || rows.length === 0;

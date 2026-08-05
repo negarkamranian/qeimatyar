@@ -76,6 +76,18 @@ def _admin_session(request: Request | None) -> bool:
 
 
 def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
+    products = rows(
+        """SELECT user_id, product_id, title, current_price, stock, product_url
+        FROM merchant_products
+        ORDER BY synced_at DESC, title COLLATE NOCASE""",
+    )
+    products_by_user: dict[int, list[dict[str, Any]]] = {}
+    for product in products:
+        product["product_url"] = product.get("product_url") or (
+            f"https://basalam.com/p/{product['product_id']}"
+        )
+        products_by_user.setdefault(product["user_id"], []).append(product)
+
     users = rows(
         """SELECT a.user_id, a.vendor_id, a.vendor_title, a.user_name, a.marketplace, a.sync_status,
         a.last_synced_at, a.connected_at, a.sync_error, a.token_expires_at,
@@ -90,6 +102,7 @@ def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
         user["is_active"] = user.get("sync_status") in {"running", "queued"}
         user["products_synced"] = user.get("product_count", 0) > 0
         user["product_titles"] = user.get("product_titles") or ""
+        user["products"] = products_by_user.get(user["user_id"], [])
         user["token_expired"] = (
             user.get("marketplace") != "digikala"
             and _is_token_expired(user.get("token_expires_at"))

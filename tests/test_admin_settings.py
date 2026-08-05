@@ -46,7 +46,7 @@ def test_admin_panel_exposes_connected_users():
         db.execute("DELETE FROM accounts WHERE user_id IN (9001, 9002)")
 
 
-def test_admin_users_links_merchant_name_and_has_no_details_column():
+def test_admin_users_links_merchant_name_to_basalam_and_expands_products():
     init_db()
     user_id = 9010
     with connection() as db:
@@ -57,6 +57,12 @@ def test_admin_users_links_merchant_name_and_has_no_details_column():
             VALUES(?,?,?,?,?,?,?)""",
             (user_id, 10010, "غرفه لینک تست", "کاربر لینک تست", "token", now_iso(), "idle"),
         )
+        db.execute(
+            """INSERT INTO merchant_products
+            (user_id,product_id,title,current_price,stock,product_url,synced_at)
+            VALUES(?,?,?,?,?,?,?)""",
+            (user_id, 5010, "محصول لینک تست", 125000, 3, "https://basalam.com/p/5010", now_iso()),
+        )
 
     try:
         with TestClient(app) as client:
@@ -64,11 +70,15 @@ def test_admin_users_links_merchant_name_and_has_no_details_column():
             response = client.get("/admin/users")
 
         assert response.status_code == 200
-        assert f'href="/admin/users/{user_id}">غرفه لینک تست</a>' in response.text
+        assert f'href="https://basalam.com/s/10010"' in response.text
+        assert "غرفه لینک تست ↗" in response.text
+        assert f'data-products-toggle="{user_id}"' in response.text
+        assert "محصول لینک تست" in response.text
         assert "<th>جزئیات</th>" not in response.text
         assert "مشاهده ←" not in response.text
     finally:
         with connection() as db:
+            db.execute("DELETE FROM merchant_products WHERE user_id=?", (user_id,))
             db.execute("DELETE FROM accounts WHERE user_id=?", (user_id,))
 
 
