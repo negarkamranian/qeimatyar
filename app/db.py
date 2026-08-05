@@ -158,6 +158,27 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_merchant_market_snapshots_product_date
               ON merchant_market_snapshots(user_id, product_id, captured_at DESC);
+            CREATE TABLE IF NOT EXISTS basalam_product_catalog (
+                product_id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                category_id INTEGER,
+                category_title TEXT,
+                price_toman INTEGER NOT NULL DEFAULT 0,
+                stock INTEGER,
+                sales_count INTEGER,
+                rating_average REAL,
+                vendor_id INTEGER,
+                vendor_name TEXT,
+                indexed_at TEXT,
+                source_file TEXT NOT NULL DEFAULT '',
+                imported_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_basalam_product_catalog_category
+              ON basalam_product_catalog(category_id);
+            CREATE INDEX IF NOT EXISTS idx_basalam_product_catalog_price
+              ON basalam_product_catalog(price_toman);
+            CREATE VIRTUAL TABLE IF NOT EXISTS basalam_product_catalog_fts
+              USING fts5(title, category_title, tags, product_id UNINDEXED);
             CREATE TABLE IF NOT EXISTS merchant_notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,

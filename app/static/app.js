@@ -288,8 +288,11 @@ function renderResult(data) {
   const parts = Object.entries(counts)
     .filter(([source, count]) => count > 0 && !["trendyol", "noon_uae"].includes(source))
     .map(([source, count]) => `${sourceNames[source]} ${fa(count)}`);
+  const datasetNote = data.dataset_count
+    ? ` · دیتاست باسلام ${fa(data.dataset_count)} مورد افزوده`
+    : "";
   document.querySelector("#source-summary").textContent =
-    `${parts.join(" · ")} · ${fa(Number(internalAnalysis.excluded_count) + userRemovedComparableCount)} قیمت پرت یا نامرتبط حذف شد`;
+    `${parts.join(" · ")}${datasetNote} · ${fa(Number(internalAnalysis.excluded_count) + userRemovedComparableCount)} قیمت پرت یا نامرتبط حذف شد`;
 
   const groups = data.listing_groups || {
     internal: analysis.listings.filter(item => !["trendyol", "noon_uae"].includes(item.source)),

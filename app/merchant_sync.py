@@ -16,6 +16,7 @@ from app.marketplaces import (
     exclude_marketplace_product,
     market_crawler,
 )
+from app.similarity import augment_basalam_listings
 
 logger = logging.getLogger(__name__)
 
@@ -538,8 +539,14 @@ class MerchantSyncService:
                     async with semaphore:
                         try:
                             crawl = await market_crawler.search(product["title"])
-                            comparable_listings = exclude_marketplace_product(
+                            enriched_listings, _ = augment_basalam_listings(
                                 crawl["listings"],
+                                product["title"],
+                                current_price=product.get("price"),
+                                limit=72,
+                            )
+                            comparable_listings = exclude_marketplace_product(
+                                enriched_listings,
                                 account.get("marketplace") or "basalam",
                                 product["id"],
                             )
@@ -763,7 +770,7 @@ class MerchantSyncService:
             if not account:
                 return {"ok": False, "status": "account_not_found"}
             products = rows(
-                """SELECT product_id,title,stock FROM merchant_products
+                """SELECT product_id,title,current_price,stock FROM merchant_products
                 WHERE user_id=? ORDER BY stock > 0 DESC, stock DESC""",
                 (user_id,),
             )[: max(1, settings.merchant_product_limit)]
@@ -779,8 +786,14 @@ class MerchantSyncService:
                     async with semaphore:
                         try:
                             crawl = await market_crawler.search(product["title"])
-                            comparable_listings = exclude_marketplace_product(
+                            enriched_listings, _ = augment_basalam_listings(
                                 crawl["listings"],
+                                product["title"],
+                                current_price=product.get("current_price"),
+                                limit=72,
+                            )
+                            comparable_listings = exclude_marketplace_product(
+                                enriched_listings,
                                 account[0].get("marketplace") or "basalam",
                                 product["product_id"],
                             )

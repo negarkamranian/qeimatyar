@@ -5,11 +5,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
-    environment:
-      ENV_FILE_PRODUCTION: .env.production
     volumes:
       - app_data:/app/data
+      - ./data/basalam_dataset:/app/datasets/basalam:ro
       - ./.env.production:/app/.env.production:rw
+    environment:
+      ENV_FILE_PRODUCTION: .env.production
+      BASALAM_DATASET_DIR: /app/datasets/basalam
     expose:
       - "8000"
     healthcheck:

@@ -61,6 +61,7 @@ class MarketListing:
     external_id: str = ""
     native_price: float | None = None
     native_currency: str = ""
+    origin: str = "live"
 
     def public_dict(self) -> dict[str, Any]:
         data = asdict(self)

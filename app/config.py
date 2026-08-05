@@ -28,6 +28,7 @@ class Settings:
         self.base_url: str = os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
         self.secret: str = os.getenv("APP_SECRET", "development-only-secret-change-me")
         self.database_path: str = os.getenv("DATABASE_PATH", "data/nerkhban.db")
+        self.basalam_dataset_dir: str = os.getenv("BASALAM_DATASET_DIR", "/private/tmp/qeimatyar_basalam_dataset")
         self.client_id: str = os.getenv("BASALAM_CLIENT_ID", "")
         self.client_secret: str = os.getenv("BASALAM_CLIENT_SECRET", "")
         self.redirect_uri: str = os.getenv(

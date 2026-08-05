@@ -53,6 +53,7 @@ from app.product_input import (
     resolve_product_query,
 )
 from app.sessions import COOKIE_NAME, SESSION_SECONDS, create_session, read_session
+from app.similarity import augment_basalam_listings, import_basalam_dataset, search_similar_products
 
 BASE = Path(__file__).resolve().parent
 logger = logging.getLogger(__name__)
@@ -793,6 +794,45 @@ class StoreAnalysisInput(BaseModel):
     use_llm: bool = Field(default=False)
 
 
+class SimilaritySearchInput(BaseModel):
+    query: str = Field(min_length=2, max_length=200)
+    category_id: int | None = Field(default=None, ge=1)
+    current_price: int | None = Field(default=None, ge=1)
+    limit: int = Field(default=24, ge=3, le=72)
+
+
+class DatasetImportInput(BaseModel):
+    dataset_dir: str | None = Field(default=None, max_length=500)
+
+
+@app.post("/internal/basalam-dataset/import")
+def import_basalam_dataset_endpoint(
+    payload: DatasetImportInput,
+    x_cron_secret: str = Header(default=""),
+) -> dict[str, Any]:
+    if not settings.cron_secret or not hmac.compare_digest(
+        x_cron_secret, settings.cron_secret
+    ):
+        raise HTTPException(401, "Invalid scheduler secret.")
+    result = import_basalam_dataset(payload.dataset_dir)
+    return {"ok": True, **result.__dict__}
+
+
+@app.post("/api/similarity/search")
+def similarity_search(payload: SimilaritySearchInput) -> dict[str, Any]:
+    listings = search_similar_products(
+        payload.query,
+        category_id=payload.category_id,
+        current_price=payload.current_price,
+        limit=payload.limit,
+    )
+    return {
+        "query": payload.query,
+        "count": len(listings),
+        "listings": [item.public_dict() for item in listings],
+    }
+
+
 @app.post("/api/store/analyze")
 async def store_analysis(
     payload: StoreAnalysisInput, request: Request
@@ -833,7 +873,13 @@ async def store_analysis(
                             if optimized:
                                 search_query = optimized
                 crawl = await market_crawler.search(search_query)
-                listings = crawl["listings"]
+                listings, dataset_count = augment_basalam_listings(
+                    crawl["listings"],
+                    search_query,
+                    category_id=(source_product or {}).get("category_id"),
+                    current_price=(source_product or {}).get("price"),
+                    limit=72,
+                )
                 llm_scores: dict[str, float] = {}
                 if payload.use_llm and settings.llm_similarity_enabled:
                     llm_scores = await score_product_similarity(search_query, listings, source_product)
@@ -862,6 +908,7 @@ async def store_analysis(
                         "sample_size": analysis["sample_size"],
                         "source_counts": analysis["source_counts"],
                         "listings": analysis["listings"],
+                        "dataset_count": dataset_count,
                         "llm_similarity_enabled": analysis.get("llm_similarity_enabled", False),
                         "method": analysis["method"],
                     },
@@ -1229,7 +1276,14 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
     if not any(status["ok"] for status in statuses):
         raise HTTPException(502, "هیچ‌کدام از بازارها در دسترس نبودند؛ کمی بعد دوباره تلاش کنید.")
     try:
-        listings = crawl["listings"]
+        listings, dataset_count = augment_basalam_listings(
+            crawl["listings"],
+            search_query,
+            category_id=(source_product or {}).get("category_id"),
+            current_price=(source_product or {}).get("price"),
+            limit=72,
+        )
+        crawl["raw_count"] += dataset_count
         if excluded_product_id:
             listings = exclude_marketplace_product(
                 listings,
@@ -1284,6 +1338,7 @@ async def market_analysis(payload: MarketSearchInput, request: Request) -> dict[
         "listing_groups": listing_groups,
         "sources": statuses,
         "raw_count": crawl["raw_count"],
+        "dataset_count": dataset_count,
         "search_queries": crawl.get("search_queries", {}),
         "disclaimer": "این بازه از قیمت‌های فعلی فروش ساخته شده، نه تراکنش‌های قطعی‌شده.",
     }

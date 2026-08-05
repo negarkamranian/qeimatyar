@@ -173,6 +173,45 @@ curl -X POST http://app:8000/internal/merchant-sync \
 در حالت Compose معمولاً اجرای دستی لازم نیست. مقدار `CRON_SECRET` باید تصادفی،
 طولانی و در سرویس app و scheduler یکسان باشد.
 
+## دیتاست مقایسه‌ای باسلام
+
+دیتاست سبک پوشاک زنانه نباید داخل image برنامه یا در مسیر موقت سرور قرار بگیرد.
+فایل‌های JSONL را روی دیسک سرور، کنار پروژه، در مسیر `data/basalam_dataset/`
+قرار دهید. Compose این مسیر را به‌صورت read-only داخل کانتینر روی
+`/app/datasets/basalam` mount می‌کند.
+
+نمونه انتقال از سیستم جمع‌آوری به سرور:
+
+```bash
+mkdir -p data/basalam_dataset
+rsync -av /path/to/qeimatyar_basalam_dataset/ data/basalam_dataset/
+```
+
+سپس در سرور:
+
+```bash
+docker compose -f compose.production.yml up -d --build
+docker compose -f compose.production.yml exec app \
+  python -m app.similarity import --dataset-dir /app/datasets/basalam
+```
+
+Import فایل‌های متنی را به جدول SQLite و ایندکس FTS تبدیل می‌کند؛ درخواست‌های
+جست‌وجو دیگر JSONL را نمی‌خوانند. بعد از هر refresh دیتاست، همین دستور import را
+دوباره اجرا کنید. خود دیتابیس در volume `app_data` باقی می‌ماند.
+
+برای اجرای import از بیرون کانتینر نیز endpoint داخلی وجود دارد:
+
+```bash
+curl -X POST http://127.0.0.1:8000/internal/basalam-dataset/import \
+  -H "X-Cron-Secret: YOUR_CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+در مسیر search صفحه اصلی و تحلیل محصولات غرفه، نتایج زنده باسلام با نتایج این
+ایندکس ادغام می‌شوند؛ محصول تکراری حذف می‌شود و نتیجه زنده اولویت دارد. مقدار
+`dataset_count` و برچسب منبع نیز برای شفافیت در پاسخ API و UI ثبت می‌شود.
+
 ## مسیر محصول تا نسخه تجاری
 
 MVP فعلی یک vertical slice است. برای رسیدن به مدل ML شبیه مرکاری:

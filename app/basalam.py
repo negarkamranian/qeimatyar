@@ -569,6 +569,12 @@ async def fetch_basalam_product(product_id: int) -> dict[str, Any]:
                         "price": _rial_to_toman(data.get("price") or data.get("primary_price")),
                         "image_url": str(data.get("photo") or data.get("image_url", "")) if not isinstance(data.get("photo"), dict) else str((data.get("photo") or {}).get("md", "")),
                         "specs": _flatten_basalam_specs(data.get("params") or data.get("attributes", [])),
+                        "category_id": data.get("category_id")
+                        or (
+                            (data.get("category") or {}).get("id")
+                            if isinstance(data.get("category") or {}, dict)
+                            else None
+                        ),
                         "product_id": product_id,
                     }
     except (httpx.HTTPError, ValueError, TypeError) as exc:
