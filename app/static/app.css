@@ -437,6 +437,9 @@ h1, h2, p { margin-top: 0; }
 .swipe-action.reject { color: var(--red); border-color: #f2c8cf; }
 .swipe-action.accept { color: var(--green); border-color: #b9d8cf; }
 .swipe-action:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(30,49,43,.09); }
+.apply-review-feedback { width: 100%; border: 0; border-radius: 9px; padding: 9px 12px; background: var(--green); color: #fff; font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.apply-review-feedback:hover { background: #0f3c31; }
+.apply-review-feedback:disabled { opacity: .65; cursor: wait; }
 .swipe-complete { position: absolute; inset: 18px; display: grid; place-content: center; justify-items: center; direction: rtl; text-align: center; color: var(--muted); }
 .swipe-complete > span { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 10px; border-radius: 50%; background: #dff3eb; color: var(--green); font-size: 20px; font-weight: 800; }
 .swipe-complete strong { color: var(--ink); font-size: 13px; }

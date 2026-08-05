@@ -13,6 +13,7 @@ def test_results_page_has_separate_market_groups_and_foreign_toggle_off_by_defau
     assert 'id="foreign-listings"' in response.text
     assert 'id="include-foreign-prices"' in response.text
     assert 'id="include-foreign-prices" type="checkbox" role="switch" checked' not in response.text
+    assert 'id="apply-review-feedback"' in response.text
 
 
 def test_market_analysis_endpoint(monkeypatch):
@@ -135,6 +136,41 @@ def test_market_recalculation_requires_three_comparables():
         response = client.post("/api/market/recalculate", json=payload)
 
     assert response.status_code == 422
+
+
+def test_market_reevaluation_batches_feedback_and_excludes_rejected(monkeypatch):
+    captured = {}
+
+    async def fake_score(query, listings, source_product=None, feedback=None):
+        captured["query"] = query
+        captured["titles"] = [item.title for item in listings]
+        captured["feedback"] = feedback
+        return {item.url: 1 for item in listings}
+
+    monkeypatch.setattr("app.main.score_product_similarity", fake_score)
+    monkeypatch.setattr("app.main.settings.llm_similarity_enabled", True)
+    monkeypatch.setattr("app.main.settings.avalai_api_key", "test-key")
+    payload = {
+        "query": "محصول نمونه",
+        "listings": [
+            {"source": "torob", "title": "قبول شده", "price": 400_000, "url": "https://torob.com/a", "similarity": 1},
+            {"source": "digikala", "title": "رد شده", "price": 450_000, "url": "https://digikala.com/b", "similarity": 1},
+            {"source": "basalam", "title": "مشابه اول", "price": 500_000, "url": "https://basalam.com/c", "similarity": 1},
+            {"source": "torob", "title": "مشابه دوم", "price": 600_000, "url": "https://torob.com/d", "similarity": 1},
+        ],
+        "accepted_urls": ["https://torob.com/a"],
+        "rejected_urls": ["https://digikala.com/b"],
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/market/re-evaluate", json=payload)
+
+    assert response.status_code == 200
+    assert captured == {
+        "query": "محصول نمونه",
+        "titles": ["قبول شده", "مشابه اول", "مشابه دوم"],
+        "feedback": {"accepted": ["قبول شده"], "rejected": ["رد شده"]},
+    }
+    assert response.json()["analysis"]["sample_size"] == 3
 
 
 def test_market_analysis_resolves_link_and_excludes_own_basalam_product(monkeypatch):

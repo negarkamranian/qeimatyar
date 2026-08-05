@@ -304,6 +304,7 @@ async def score_product_similarity(
     query: str,
     listings: list[MarketListing],
     source_product: dict[str, Any] | None = None,
+    feedback: dict[str, list[str]] | None = None,
 ) -> dict[str, float]:
     """Score each listing's similarity to the search query or source product using an LLM.
 
@@ -320,11 +321,14 @@ async def score_product_similarity(
         f"{i + 1}. {listing.title}" for i, listing in enumerate(listings)
     )
 
+    feedback_context = _build_feedback_context(feedback)
     if source_product:
         context = _build_source_context(source_product)
         prompt = _build_product_comparison_prompt(query, context, products_text)
     else:
         prompt = _build_query_comparison_prompt(query, products_text)
+    if feedback_context:
+        prompt = f"{prompt}\n\n{feedback_context}"
 
     async def compute() -> dict[str, float]:
         try:
@@ -376,9 +380,32 @@ async def score_product_similarity(
                 {"title": listing.title, "url": listing.url}
                 for listing in listings
             ],
+            "feedback": feedback or {},
         },
     )
     return await _similarity_cache.get_or_compute(key, compute, bool)
+
+
+def _build_feedback_context(feedback: dict[str, list[str]] | None) -> str:
+    """Format explicit review decisions as extra evidence for a re-evaluation."""
+    if not feedback:
+        return ""
+    accepted = [str(title).strip()[:300] for title in feedback.get("accepted", []) if str(title).strip()]
+    rejected = [str(title).strip()[:300] for title in feedback.get("rejected", []) if str(title).strip()]
+    if not accepted and not rejected:
+        return ""
+    parts = [
+        "The shopper reviewed some search results. Use these decisions as high-priority evidence when scoring the remaining products.",
+        "Do not score rejected products: they have already been removed.",
+    ]
+    if accepted:
+        parts.append("Accepted as comparable:\n" + "\n".join(f"- {title}" for title in accepted[:5]))
+    if rejected:
+        parts.append("Rejected as not comparable:\n" + "\n".join(f"- {title}" for title in rejected[:5]))
+    parts.append(
+        "Infer the decisive product attributes from this feedback (such as product type, model, size, capacity, or accessory versus main product) and penalize remaining products that share the rejected attributes."
+    )
+    return "\n".join(parts)
 
 
 def _build_query_comparison_prompt(query: str, products_text: str) -> str:
