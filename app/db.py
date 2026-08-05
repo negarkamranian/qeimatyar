@@ -225,6 +225,7 @@ def init_db() -> None:
         migrations = {
             "marketplace": "ALTER TABLE accounts ADD COLUMN marketplace TEXT NOT NULL DEFAULT 'basalam'",
             "user_name": "ALTER TABLE accounts ADD COLUMN user_name TEXT",
+            "vendor_slug": "ALTER TABLE accounts ADD COLUMN vendor_slug TEXT",
             "token_expires_at": "ALTER TABLE accounts ADD COLUMN token_expires_at TEXT",
             "last_synced_at": "ALTER TABLE accounts ADD COLUMN last_synced_at TEXT",
             "sync_status": "ALTER TABLE accounts ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'idle'",

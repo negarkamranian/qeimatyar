@@ -55,7 +55,7 @@ def test_admin_users_links_merchant_name_to_basalam_and_expands_products():
             """INSERT INTO accounts
             (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,sync_status)
             VALUES(?,?,?,?,?,?,?)""",
-            (user_id, 10010, "غرفه لینک تست", "کاربر لینک تست", "token", now_iso(), "idle"),
+            (user_id, 10010, "غرفه لینک تست", "ehsansb44", "token", now_iso(), "idle"),
         )
         db.execute(
             """INSERT INTO merchant_products
@@ -70,7 +70,7 @@ def test_admin_users_links_merchant_name_to_basalam_and_expands_products():
             response = client.get("/admin/users")
 
         assert response.status_code == 200
-        assert f'href="https://basalam.com/s/10010"' in response.text
+        assert f'href="https://basalam.com/ehsansb44"' in response.text
         assert "غرفه لینک تست ↗" in response.text
         assert f'data-products-toggle="{user_id}"' in response.text
         assert "محصول لینک تست" in response.text

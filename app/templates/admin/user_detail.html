@@ -8,7 +8,7 @@
   <table>
     <tr><th>شناسه کاربر</th><td>{{ account.user_id }}</td></tr>
     <tr><th>نام غرفه</th><td>{{ account.vendor_title }}</td></tr>
-    <tr><th>نام کاربری</th><td><a href="https://basalam.com/s/{{ account.vendor_id }}" target="_blank" rel="noopener">{{ account.user_name or '-' }} ↗</a></td></tr>
+    <tr><th>نام کاربری</th><td><a href="{{ store_url }}" target="_blank" rel="noopener">{{ account.user_name or '-' }} ↗</a></td></tr>
     <tr><th>شناسه فروشنده</th><td>{{ account.vendor_id }}</td></tr>
     <tr><th>وضعیت همگام‌سازی</th><td><span class="badge {% if account.sync_status != 'running' and account.sync_status != 'queued' %}inactive{% endif %}">{{ account.sync_status }}</span></td></tr>
     <tr><th>آخرین همگام‌سازی</th><td>{{ account.last_synced_at or 'هنوز' }}</td></tr>

@@ -13,6 +13,7 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -75,6 +76,13 @@ def _admin_session(request: Request | None) -> bool:
     return request.cookies.get("admin_session") == settings.secret
 
 
+def _basalam_store_url(user: dict[str, Any]) -> str:
+    slug = (user.get("vendor_slug") or user.get("user_name") or "").strip().lstrip("@")
+    if slug:
+        return f"https://basalam.com/{quote(slug, safe='-_.~')}"
+    return f"https://basalam.com/s/{user['vendor_id']}"
+
+
 def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
     products = rows(
         """SELECT user_id, product_id, title, current_price, stock, product_url
@@ -89,7 +97,7 @@ def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
         products_by_user.setdefault(product["user_id"], []).append(product)
 
     users = rows(
-        """SELECT a.user_id, a.vendor_id, a.vendor_title, a.user_name, a.marketplace, a.sync_status,
+        """SELECT a.user_id, a.vendor_id, a.vendor_title, a.user_name, a.vendor_slug, a.marketplace, a.sync_status,
         a.last_synced_at, a.connected_at, a.sync_error, a.token_expires_at,
         COUNT(mp.product_id) AS product_count,
         GROUP_CONCAT(mp.title, ' | ') AS product_titles
@@ -103,6 +111,7 @@ def admin_dashboard_context(request: Request | None) -> dict[str, Any]:
         user["products_synced"] = user.get("product_count", 0) > 0
         user["product_titles"] = user.get("product_titles") or ""
         user["products"] = products_by_user.get(user["user_id"], [])
+        user["store_url"] = _basalam_store_url(user)
         user["token_expired"] = (
             user.get("marketplace") != "digikala"
             and _is_token_expired(user.get("token_expires_at"))
@@ -242,6 +251,7 @@ def admin_user_detail(request: Request, user_id: int) -> HTMLResponse:
             "account": account[0],
             "products": products,
             "now_iso": now_iso(),
+            "store_url": _basalam_store_url(account[0]),
         },
     )
 
@@ -1563,13 +1573,13 @@ async def auth_callback(
         with connection() as db:
             db.execute(
                 """INSERT INTO accounts
-                (user_id,vendor_id,vendor_title,user_name,access_token,refresh_token,
+                (user_id,vendor_id,vendor_title,user_name,vendor_slug,access_token,refresh_token,
                  token_expires_at,connected_at,sync_status,analytics_status,
                  analytics_error)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(user_id) DO UPDATE SET
                   vendor_id=excluded.vendor_id, vendor_title=excluded.vendor_title,
-                  user_name=excluded.user_name,
+                  user_name=excluded.user_name, vendor_slug=excluded.vendor_slug,
                   access_token=excluded.access_token, refresh_token=excluded.refresh_token,
                   token_expires_at=excluded.token_expires_at,
                   connected_at=excluded.connected_at,sync_status='queued',
@@ -1579,6 +1589,10 @@ async def auth_callback(
                     vendor["id"],
                     vendor.get("title", "غرفه باسلام"),
                     user.get("name") or user.get("username") or "غرفه‌دار",
+                    vendor.get("slug")
+                    or vendor.get("username")
+                    or vendor.get("handle")
+                    or user.get("username"),
                     encrypt_token(access),
                     encrypt_token(token_data["refresh_token"]) if token_data.get("refresh_token") else None,
                     token_expiry_iso(token_data.get("expires_in")),

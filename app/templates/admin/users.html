@@ -45,7 +45,7 @@
           data-products="{{ 'synced' if user.products_synced else 'empty' }}"
         >
           <td class="cell-title">
-            <strong><a href="https://basalam.com/s/{{ user.vendor_id }}" target="_blank" rel="noopener">{{ user.vendor_title }} ↗</a></strong>
+            <strong><a href="{{ user.store_url }}" target="_blank" rel="noopener">{{ user.vendor_title }} ↗</a></strong>
             <small>شناسه غرفه: {{ user.vendor_id }}</small>
           </td>
           <td>{{ user.user_name or "بدون نام" }}</td>
