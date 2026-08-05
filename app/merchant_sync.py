@@ -630,6 +630,126 @@ class MerchantSyncService:
                     )
                 return {"ok": False, "status": "failed", "message": str(exc)}
 
+    async def resync_basalam_catalog_prices(self, user_id: int) -> dict[str, Any]:
+        """Overwrite Basalam merchant product prices from the source catalog.
+
+        This is a repair path for price unit mistakes. Basalam catalog prices
+        are normalized from rial to toman before they touch merchant_products.
+        """
+        lock = self._lock(user_id)
+        if lock.locked():
+            return {"ok": True, "status": "already_running", "user_id": user_id}
+        async with lock:
+            account_rows = rows("SELECT * FROM accounts WHERE user_id=?", (user_id,))
+            if not account_rows:
+                return {"ok": False, "status": "account_not_found", "user_id": user_id}
+            account = account_rows[0]
+            if account.get("marketplace") not in {None, "basalam"}:
+                return {"ok": True, "status": "skipped", "user_id": user_id}
+            with connection() as db:
+                db.execute(
+                    "UPDATE accounts SET sync_status='running',sync_error=NULL WHERE user_id=?",
+                    (user_id,),
+                )
+            try:
+                token = await self._valid_token(account)
+                remote_products = await basalam.products(token, int(account["vendor_id"]))
+                sync_time = now_iso()
+                normalized = [_basalam_product(item) for item in remote_products]
+                with connection() as db:
+                    for product in normalized:
+                        db.execute(
+                            """INSERT INTO merchant_products
+                            (user_id,product_id,title,current_price,stock,image_url,
+                             category_title,status_title,view_count,sales_count,
+                             review_count,rating,product_created_at,product_updated_at,
+                             product_url,sku,preparation_day,net_weight,packaged_weight,
+                             raw_enrichment,synced_at)
+                            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            ON CONFLICT(user_id,product_id) DO UPDATE SET
+                              title=excluded.title,
+                              current_price=excluded.current_price,
+                              stock=excluded.stock,
+                              image_url=excluded.image_url,
+                              category_title=excluded.category_title,
+                              status_title=excluded.status_title,
+                              view_count=excluded.view_count,
+                              sales_count=excluded.sales_count,
+                              review_count=excluded.review_count,
+                              rating=excluded.rating,
+                              product_created_at=excluded.product_created_at,
+                              product_updated_at=excluded.product_updated_at,
+                              product_url=excluded.product_url,
+                              sku=excluded.sku,
+                              preparation_day=excluded.preparation_day,
+                              net_weight=excluded.net_weight,
+                              packaged_weight=excluded.packaged_weight,
+                              raw_enrichment=excluded.raw_enrichment,
+                              synced_at=excluded.synced_at""",
+                            (
+                                user_id,
+                                product["id"],
+                                product["title"],
+                                product["price"],
+                                product["stock"],
+                                product["image_url"],
+                                product.get("category_title"),
+                                product.get("status_title"),
+                                product.get("view_count", 0),
+                                product.get("sales_count", 0),
+                                product.get("review_count", 0),
+                                product.get("rating"),
+                                product.get("product_created_at"),
+                                product.get("product_updated_at"),
+                                product.get("product_url"),
+                                product.get("sku"),
+                                product.get("preparation_day"),
+                                product.get("net_weight"),
+                                product.get("packaged_weight"),
+                                json.dumps(product.get("raw_enrichment") or {}),
+                                sync_time,
+                            ),
+                        )
+                    db.execute(
+                        """UPDATE accounts SET last_synced_at=?,sync_status='idle',
+                        sync_error=NULL WHERE user_id=?""",
+                        (sync_time, user_id),
+                    )
+                return {
+                    "ok": True,
+                    "status": "complete",
+                    "user_id": user_id,
+                    "products": len(normalized),
+                }
+            except Exception as exc:
+                logger.exception("Basalam catalog price resync failed for user %s", user_id)
+                with connection() as db:
+                    db.execute(
+                        """UPDATE accounts SET sync_status='failed',sync_error=?
+                        WHERE user_id=?""",
+                        ("دریافت دوباره قیمت‌های باسلام ناموفق بود", user_id),
+                    )
+                return {
+                    "ok": False,
+                    "status": "failed",
+                    "user_id": user_id,
+                    "message": str(exc),
+                }
+
+    async def resync_all_basalam_catalog_prices(self) -> list[dict[str, Any]]:
+        accounts = rows(
+            """SELECT user_id FROM accounts
+            WHERE COALESCE(marketplace, 'basalam') = 'basalam'
+            ORDER BY connected_at DESC"""
+        )
+        semaphore = asyncio.Semaphore(2)
+
+        async def run(user_id: int) -> dict[str, Any]:
+            async with semaphore:
+                return await self.resync_basalam_catalog_prices(user_id)
+
+        return await asyncio.gather(*(run(int(account["user_id"])) for account in accounts))
+
     async def refresh_prices(self, user_id: int) -> dict[str, Any]:
         """Refresh market estimates without downloading the Basalam catalog again."""
         lock = self._lock(user_id)

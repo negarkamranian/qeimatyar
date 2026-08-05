@@ -416,10 +416,6 @@ def test_followup_migration_converts_missed_basalam_rial_current_price(tmp_path,
             "DELETE FROM data_migrations WHERE name=?",
             ("basalam_merchant_prices_rial_to_toman_followup_20260805",),
         )
-        db.execute(
-            "DELETE FROM data_migrations WHERE name=?",
-            ("basalam_merchant_prices_rial_to_toman_cutoff_20260805",),
-        )
 
     init_db()
 
@@ -432,14 +428,11 @@ def test_followup_migration_converts_missed_basalam_rial_current_price(tmp_path,
     assert product["current_price"] == 228_000
 
 
-def test_cutoff_migration_converts_old_basalam_rial_price_without_market_estimate(
-    tmp_path,
-    monkeypatch,
-):
-    monkeypatch.setattr("app.db.settings.database_path", str(tmp_path / "merchant.db"))
+def test_basalam_catalog_price_resync_overwrites_mixed_up_current_price(monkeypatch):
     init_db()
     user_id = 953151850
     with connection() as db:
+        db.execute("DELETE FROM accounts WHERE user_id=?", (user_id,))
         db.execute(
             """INSERT INTO accounts
             (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,
@@ -464,77 +457,41 @@ def test_cutoff_migration_converts_old_basalam_rial_price_without_market_estimat
                 user_id,
                 53151850,
                 "ماگ قهوه خوری",
-                5_000_000,
+                500_000,
                 10_000,
                 "{}",
-                "2026-08-05T00:00:00+00:00",
-            ),
-        )
-        db.execute(
-            "DELETE FROM data_migrations WHERE name=?",
-            ("basalam_merchant_prices_rial_to_toman_cutoff_20260805",),
-        )
-
-    init_db()
-
-    with connection() as db:
-        product = db.execute(
-            """SELECT current_price FROM merchant_products
-            WHERE user_id=? AND product_id=53151850""",
-            (user_id,),
-        ).fetchone()
-    assert product["current_price"] == 500_000
-
-
-def test_cutoff_migration_keeps_new_toman_basalam_prices(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.db.settings.database_path", str(tmp_path / "merchant.db"))
-    init_db()
-    user_id = 951000001
-    with connection() as db:
-        db.execute(
-            """INSERT INTO accounts
-            (user_id,vendor_id,vendor_title,user_name,access_token,connected_at,
-             sync_status,marketplace)
-            VALUES(?,?,?,?,?,?,?,?)""",
-            (
-                user_id,
-                user_id + 10,
-                "غرفه تست",
-                "کاربر تست",
-                encrypt_token("test-token"),
                 now_iso(),
-                "idle",
-                "basalam",
             ),
         )
-        db.execute(
-            """INSERT INTO merchant_products
-            (user_id,product_id,title,current_price,stock,source_counts,synced_at)
-            VALUES(?,?,?,?,?,?,?)""",
-            (
-                user_id,
-                1000001,
-                "محصول گران درست",
-                5_000_000,
-                1,
-                "{}",
-                "2099-01-01T00:00:00+00:00",
-            ),
-        )
-        db.execute(
-            "DELETE FROM data_migrations WHERE name=?",
-            ("basalam_merchant_prices_rial_to_toman_cutoff_20260805",),
-        )
 
-    init_db()
+    async def fake_products(token, vendor_id):
+        assert token == "test-token"
+        assert vendor_id == user_id + 10
+        return [
+            {
+                "id": 53151850,
+                "title": "ماگ قهوه خوری",
+                "price": 50_000_000,
+                "inventory": 10_000,
+                "photo": {},
+            }
+        ]
 
-    with connection() as db:
-        product = db.execute(
-            """SELECT current_price FROM merchant_products
-            WHERE user_id=? AND product_id=1000001""",
-            (user_id,),
-        ).fetchone()
-    assert product["current_price"] == 5_000_000
+    monkeypatch.setattr("app.merchant_sync.basalam.products", fake_products)
+    try:
+        result = asyncio.run(merchant_sync.resync_basalam_catalog_prices(user_id))
+        assert result["ok"]
+        assert result["products"] == 1
+        with connection() as db:
+            product = db.execute(
+                """SELECT current_price FROM merchant_products
+                WHERE user_id=? AND product_id=53151850""",
+                (user_id,),
+            ).fetchone()
+        assert product["current_price"] == 5_000_000
+    finally:
+        with connection() as db:
+            db.execute("DELETE FROM accounts WHERE user_id=?", (user_id,))
 
 
 def test_merchant_price_refresh_does_not_fetch_product_catalog(monkeypatch):

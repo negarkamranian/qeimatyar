@@ -2138,6 +2138,18 @@ async def scheduled_merchant_sync(
     return {"ok": True, "accounts": len(results), "results": results}
 
 
+@app.post("/internal/basalam-price-resync")
+async def scheduled_basalam_price_resync(
+    x_cron_secret: str = Header(default=""),
+) -> dict[str, Any]:
+    if not settings.cron_secret or not hmac.compare_digest(
+        x_cron_secret, settings.cron_secret
+    ):
+        raise HTTPException(401, "Invalid scheduler secret.")
+    results = await merchant_sync.resync_all_basalam_catalog_prices()
+    return {"ok": True, "accounts": len(results), "results": results}
+
+
 @app.post("/internal/usdt-rate-check")
 async def scheduled_usdt_rate_check(
     x_cron_secret: str = Header(default=""),
