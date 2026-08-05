@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/merchant.css?v=20260805-3">
+  <link rel="stylesheet" href="/static/merchant.css?v=20260805-4">
 </head>
 <body>
   <header class="simple-header">
@@ -53,6 +53,10 @@
       <p>قیمت محصولات شما در {{ 'دیجی‌کالا' if account.marketplace == 'digikala' else 'باسلام' }} بدون تاییدتان تغییر نمی‌کند.</p>
     </div>
 
+    <section id="strategic-insights" class="strategic-insights" aria-live="polite">
+      <div class="strategic-insights-loading">در حال ساخت پیشنهادهای استراتژیک امروز…</div>
+    </section>
+
     <section id="premium-insights" class="premium-insights" aria-live="polite">
       <div class="premium-loading">در حال آماده‌سازی تصویر ۱۸۰ روزه فروش…</div>
     </section>
@@ -73,6 +77,6 @@
   </main>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/merchant.js?v=20260805-3" defer></script>
+  <script src="/static/merchant.js?v=20260805-4" defer></script>
 </body>
 </html>

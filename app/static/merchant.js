@@ -153,6 +153,145 @@ function renderPremium(premium, account = {}) {
     </div>`;
 }
 
+function productPricingPosition(product) {
+  const current = Number(product.current_price) || 0;
+  const suggested = Number(product.market_suggested) || 0;
+  const low = Number(product.effective_min || product.market_low) || 0;
+  const high = Number(product.effective_max || product.market_high) || 0;
+  if (!current || !suggested || !low || !high) return null;
+  const deltaPct = ((current - suggested) / Math.max(suggested, 1)) * 100;
+  return { current, suggested, low, high, deltaPct };
+}
+
+function topProductNames(products) {
+  return products.slice(0, 2).map(product => product.title).join("، ");
+}
+
+function firstProductAction(products, label, metricName) {
+  const product = products[0];
+  if (!product) return "";
+  return `<a class="strategy-action" href="${escapeHtml(productAnalysisUrl(product))}" onclick="recordButtonClick('${metricName}', ${product.product_id})">${escapeHtml(label)}</a>`;
+}
+
+function strategyCard({ tone, label, title, body, metric, products = [], action = "" }) {
+  const productLine = products.length
+    ? `<small class="strategy-products">${escapeHtml(topProductNames(products))}</small>`
+    : "";
+  return `<article class="strategy-card ${tone}">
+    <span class="strategy-label">${escapeHtml(label)}</span>
+    <div>
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(body)}</p>
+      ${productLine}
+    </div>
+    <footer><strong>${escapeHtml(metric)}</strong>${action}</footer>
+  </article>`;
+}
+
+function buildStrategicInsights(products, summary = {}) {
+  const priced = products
+    .map(product => ({ product, position: productPricingPosition(product) }))
+    .filter(item => item.position);
+  const overpriced = priced
+    .filter(({ position }) => position.current > position.high || position.deltaPct >= 12)
+    .sort((a, b) => b.position.deltaPct - a.position.deltaPct)
+    .map(item => item.product);
+  const underpriced = priced
+    .filter(({ position }) => position.current < position.low || position.deltaPct <= -8)
+    .sort((a, b) => a.position.deltaPct - b.position.deltaPct)
+    .map(item => item.product);
+  const missingEstimate = products
+    .filter(product => !product.market_suggested || product.estimate_error)
+    .sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0));
+  const weakPresentation = products
+    .filter(product => Number(product.stock || 0) > 0 && Number(product.view_count || 0) === 0 && product.market_suggested)
+    .slice(0, 6);
+  const readyCount = Number(summary.estimated) || priced.length;
+  const cards = [];
+
+  if (underpriced.length) {
+    cards.push(strategyCard({
+      tone: "profit",
+      label: "فرصت سود",
+      title: "چند محصول ظرفیت افزایش قیمت دارند",
+      body: "این محصولات پایین‌تر از بازه یا پیشنهاد بازار هستند؛ می‌شود بدون خروج از محدوده رقابتی سود را بهتر کرد.",
+      metric: `${fa(underpriced.length)} محصول`,
+      products: underpriced,
+      action: firstProductAction(underpriced, "دیدن اولین فرصت", "strategy_profit"),
+    }));
+  }
+
+  if (overpriced.length) {
+    cards.push(strategyCard({
+      tone: "risk",
+      label: "ریسک فروش کند",
+      title: "قیمت چند محصول از بازار فاصله گرفته",
+      body: "این محصولات نسبت به پیشنهاد دقیقه یا سقف بازار بالاترند و احتمالا برای فروش سریع‌تر نیاز به اصلاح دارند.",
+      metric: `${fa(overpriced.length)} محصول`,
+      products: overpriced,
+      action: firstProductAction(overpriced, "بررسی قیمت", "strategy_overpriced"),
+    }));
+  }
+
+  if (missingEstimate.length) {
+    cards.push(strategyCard({
+      tone: "coverage",
+      label: "تکمیل رصد",
+      title: "چند محصول هنوز تحلیل قابل اتکا ندارند",
+      body: "برای اینکه پیشنهادهای فروش دقیق‌تر شوند، ابتدا محصولات بدون برآورد را دوباره با بازار همگام کنید.",
+      metric: `${fa(missingEstimate.length)} محصول`,
+      products: missingEstimate,
+      action: `<button class="strategy-action" type="button" data-strategy-action="sync-prices">شروع رصد</button>`,
+    }));
+  }
+
+  if (weakPresentation.length) {
+    cards.push(strategyCard({
+      tone: "growth",
+      label: "رشد فروش",
+      title: "موجودی دارید اما نشانه تقاضا کم است",
+      body: "برای این محصولات قیمت موجود است، اما بازدید یا فروش ثبت‌شده کم دیده می‌شود؛ عنوان، عکس و تحلیل بازار را اولویت بدهید.",
+      metric: `${fa(weakPresentation.length)} محصول`,
+      products: weakPresentation,
+      action: firstProductAction(weakPresentation, "بازبینی محصول", "strategy_growth"),
+    }));
+  }
+
+  cards.push(strategyCard({
+    tone: "watch",
+    label: "پایش روزانه",
+    title: "پیشنهادهای آماده را هر روز مرور کنید",
+    body: "با تغییر قیمت رقبا، بهترین تصمیم برای هر محصول عوض می‌شود؛ محصولات آماده تحلیل را از همین صفحه دنبال کنید.",
+    metric: `${fa(readyCount)} تحلیل آماده`,
+    products: priced.map(item => item.product),
+    action: `<button class="strategy-action" type="button" data-strategy-action="focus-products">دیدن لیست</button>`,
+  }));
+
+  return cards.slice(0, 3);
+}
+
+function renderStrategicInsights(products, summary = {}) {
+  const node = document.querySelector("#strategic-insights");
+  if (!node) return;
+  if (!products.length) {
+    node.className = "strategic-insights empty";
+    node.innerHTML = `
+      <div class="strategic-head">
+        <div><p class="eyebrow">استراتژی فروش</p><h2>۳ اقدام پیشنهادی امروز</h2><p>بعد از دریافت محصولات، دقیقه اولویت‌های فروش و قیمت‌گذاری را اینجا می‌چیند.</p></div>
+      </div>`;
+    return;
+  }
+  node.className = "strategic-insights";
+  node.innerHTML = `
+    <div class="strategic-head">
+      <div><p class="eyebrow">استراتژی فروش</p><h2>۳ اقدام پیشنهادی امروز</h2><p>بر اساس فاصله قیمت فعلی با بازار، موجودی و وضعیت تحلیل محصولات.</p></div>
+      <span class="strategy-stamp">${fa(products.length)} محصول رصد شد</span>
+    </div>
+    <div class="strategy-grid">
+      ${buildStrategicInsights(products, summary).join("")}
+    </div>`;
+}
+
 async function loadNotifications(options = {}) {
   const data = await api("/api/merchant/notifications");
   const nextNotifications = data.notifications;
@@ -218,7 +357,7 @@ function productCard(product) {
     : `<strong class="estimate-error">${escapeHtml(product.estimate_error || "در انتظار تحلیل")}</strong>`;
   const analysisUrl = escapeHtml(productAnalysisUrl(product));
   const expanded = state.expandedProducts.has(product.product_id);
-  return `<article class="product-card" data-title="${escapeHtml(product.title.toLowerCase())}">
+  return `<article class="product-card" data-product-id="${product.product_id}" data-title="${escapeHtml(product.title.toLowerCase())}">
     <div class="product-row">
     <button class="product-identity" type="button" data-product-toggle="${product.product_id}" aria-expanded="${expanded}">${imageNode}<span>
       <strong title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</strong>
@@ -271,6 +410,7 @@ async function loadDashboard() {
   const data = await api("/api/merchant/dashboard");
   state.products = data.products;
   state.marketplace = data.account.marketplace || "basalam";
+  renderStrategicInsights(state.products, data.summary);
   renderPremium(data.premium, data.account);
   state.status = data.account.sync_status;
   const running = ["running", "queued"].includes(state.status);
@@ -318,6 +458,19 @@ document.querySelector("#sync-products-button").addEventListener("click", async 
 });
 document.querySelector("#product-filter").addEventListener("input", renderProducts);
 document.addEventListener("click", event => {
+  const strategyAction = event.target.closest("[data-strategy-action]");
+  if (strategyAction) {
+    const action = strategyAction.dataset.strategyAction;
+    if (action === "sync-prices") {
+      recordButtonClick("strategy_sync_prices");
+      document.querySelector("#sync-button")?.click();
+    }
+    if (action === "focus-products") {
+      recordButtonClick("strategy_focus_products");
+      document.querySelector(".products-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    return;
+  }
   const detailsButton = event.target.closest("[data-product-toggle]");
   if (detailsButton) {
     toggleProductDetails(detailsButton.dataset.productToggle);
