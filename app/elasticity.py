@@ -105,3 +105,21 @@ def analyze_elasticity(
         "recommended_revenue": best["revenue"],
         "message": "پیشنهاد در محدوده سناریوهای بررسی‌شده است؛ برای تصمیم قطعی، اثر فصل، تبلیغات و موجودی را هم کنترل کنید.",
     }
+
+
+def estimate_log_slope(pairs: list[tuple[float, float]]) -> dict[str, Any] | None:
+    usable = [(x, y) for x, y in pairs if x > 0 and y > 0]
+    if len(usable) < 3 or len({x for x, _ in usable}) < 2:
+        return None
+    xs = [math.log(x) for x, _ in usable]
+    ys = [math.log(y) for _, y in usable]
+    x_bar = sum(xs) / len(xs)
+    y_bar = sum(ys) / len(ys)
+    denominator = sum((x - x_bar) ** 2 for x in xs)
+    if denominator <= 1e-12:
+        return None
+    slope = sum((x - x_bar) * (y - y_bar) for x, y in zip(xs, ys)) / denominator
+    predicted = [y_bar + slope * (x - x_bar) for x in xs]
+    total = sum((y - y_bar) ** 2 for y in ys)
+    r_squared = 1 - sum((y - p) ** 2 for y, p in zip(ys, predicted)) / total if total else 0
+    return {"pass_through": round(slope, 4), "r_squared": round(max(0, min(1, r_squared)), 4), "sample_size": len(usable)}

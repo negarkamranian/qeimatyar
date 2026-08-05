@@ -135,6 +135,17 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_merchant_elasticity_product
               ON merchant_elasticity_observations(user_id, product_id, period);
+            CREATE TABLE IF NOT EXISTS merchant_currency_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                product_id INTEGER NOT NULL,
+                internal_price INTEGER NOT NULL,
+                internal_median INTEGER,
+                foreign_median_toman INTEGER,
+                captured_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_merchant_currency_snapshots_product
+              ON merchant_currency_snapshots(user_id, product_id, captured_at DESC);
             CREATE TABLE IF NOT EXISTS merchant_market_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,

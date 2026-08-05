@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from statistics import median
 from typing import Annotated, Any
 from urllib.parse import quote
 
@@ -28,7 +29,7 @@ from app.config import refresh_settings, save_admin_overrides, settings, _env_fi
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
 from app.digikala import DigikalaError, digikala
-from app.elasticity import ElasticityPoint, analyze_elasticity
+from app.elasticity import ElasticityPoint, analyze_elasticity, estimate_log_slope
 from app.llm import (
     WebSearchResult,
     optimize_marketplace_queries,
@@ -562,6 +563,56 @@ class ElasticityObservationInput(BaseModel):
 
 class ElasticityObservationsInput(BaseModel):
     observations: list[ElasticityObservationInput] = Field(min_length=1, max_length=365)
+
+
+def _market_currency_comparison(
+    listings: list[MarketListing],
+    *,
+    current_price: int,
+) -> dict[str, Any]:
+    internal = [item for item in listings if item.source in INTERNAL_MARKETPLACE_SOURCES and item.price > 0]
+    foreign = [item for item in listings if item.source in FOREIGN_MARKETPLACE_SOURCES and item.price > 0]
+    internal_prices = [item.price for item in internal]
+    foreign_prices = [item.price for item in foreign]
+    foreign_by_currency: dict[str, list[MarketListing]] = defaultdict(list)
+    for item in foreign:
+        if item.native_price and item.native_currency:
+            foreign_by_currency[item.native_currency].append(item)
+
+    internal_median = round(median(internal_prices)) if internal_prices else None
+    foreign_median = round(median(foreign_prices)) if foreign_prices else None
+    ratio = round(current_price / foreign_median, 3) if foreign_median and current_price else None
+    currencies = {
+        currency: {
+            "effective_toman_rate": round(median([item.price / item.native_price for item in items]), 2),
+            "sample_size": len(items),
+        }
+        for currency, items in foreign_by_currency.items()
+    }
+    scenarios = []
+    for fx_change in (-20, -10, -5, 0, 5, 10, 20):
+        factor = 1 + (fx_change / 100)
+        scenarios.append({
+            "fx_change_percent": fx_change,
+            "foreign_equivalent_price": round(foreign_median * factor) if foreign_median else None,
+            "internal_price_scenario": round(current_price * factor) if current_price else None,
+            "estimated_internal_change_percent": fx_change,
+            "pass_through_assumption": 1.0,
+        })
+    return {
+        "internal_listings": [item.public_dict() for item in internal],
+        "foreign_listings": [item.public_dict() for item in foreign],
+        "internal_median": internal_median,
+        "foreign_median_toman": foreign_median,
+        "current_price": current_price,
+        "current_to_foreign_ratio": ratio,
+        "currency_rates": currencies,
+        "scenarios": scenarios,
+        "sample_size": len(internal) + len(foreign),
+        "historical_elasticity": None,
+        "historical_data_status": "not_enough_snapshots",
+        "disclaimer": "این سناریو با فرض عبور ۱۰۰٪ تغییر نرخ ارز از قیمت وارداتی محاسبه شده و هنوز کشش تاریخی دلار نیست.",
+    }
 
 
 def create_merchant_notification(
@@ -1920,6 +1971,65 @@ def save_merchant_elasticity(
             ],
         )
     return merchant_elasticity(product_id, request)
+
+
+@app.get("/api/merchant/products/{product_id}/market-comparison")
+async def merchant_market_comparison(product_id: int, request: Request) -> dict[str, Any]:
+    user_id = _merchant_user(request)
+    product_rows = rows(
+        "SELECT product_id,title,current_price FROM merchant_products WHERE user_id=? AND product_id=?",
+        (user_id, product_id),
+    )
+    if not product_rows:
+        raise HTTPException(404, "محصول پیدا نشد.")
+    product = product_rows[0]
+    try:
+        crawl = await market_crawler.search(product["title"])
+        listings = exclude_marketplace_product(
+            crawl["listings"], "basalam", product_id,
+        )
+    except Exception as exc:
+        logger.exception("Merchant market comparison failed for %s", product_id)
+        raise HTTPException(502, "دریافت مقایسه بازار فعلاً ممکن نیست.") from exc
+    comparison = _market_currency_comparison(
+        listings,
+        current_price=int(product["current_price"] or 0),
+    )
+    snapshot_pairs = [
+        (float(item["foreign_median_toman"]), float(item["internal_price"]))
+        for item in rows(
+            """SELECT foreign_median_toman,internal_price
+            FROM merchant_currency_snapshots
+            WHERE user_id=? AND product_id=? AND foreign_median_toman>0
+            ORDER BY captured_at""",
+            (user_id, product_id),
+        )
+    ]
+    if comparison["foreign_median_toman"]:
+        snapshot_pairs.append((
+            float(comparison["foreign_median_toman"]),
+            float(product["current_price"] or 0),
+        ))
+    historical = estimate_log_slope(snapshot_pairs)
+    comparison["historical_elasticity"] = historical
+    comparison["historical_data_status"] = "ready" if historical else "not_enough_snapshots"
+    with connection() as db:
+        db.execute(
+            """INSERT INTO merchant_currency_snapshots
+            (user_id,product_id,internal_price,internal_median,foreign_median_toman,captured_at)
+            VALUES(?,?,?,?,?,?)""",
+            (
+                user_id,
+                product_id,
+                int(product["current_price"] or 0),
+                comparison["internal_median"],
+                comparison["foreign_median_toman"],
+                now_iso(),
+            ),
+        )
+    comparison["sources"] = [asdict(status) for status in crawl["sources"]]
+    comparison["product"] = {"product_id": product_id, "title": product["title"]}
+    return comparison
 
 
 @app.post("/api/merchant/analyze-product/{product_id}")
