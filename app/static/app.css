@@ -427,8 +427,8 @@ h1, h2, p { margin-top: 0; }
 .swipe-card b { margin-top: 8px; color: var(--green); font-size: 13px; }
 .swipe-card small { margin-top: 3px; color: var(--muted); font-size: 8px; }
 .swipe-verdict { position: absolute; z-index: 3; top: 12px; padding: 5px 8px; border: 2px solid; border-radius: 7px; background: rgba(255,255,255,.92); font-size: 10px; font-weight: 800; transform: rotate(-7deg); pointer-events: none; }
-.swipe-verdict.accept { right: 12px; color: var(--green); opacity: var(--accept-opacity); }
-.swipe-verdict.reject { left: 12px; color: var(--red); opacity: var(--reject-opacity); transform: rotate(7deg); }
+.swipe-verdict.accept { left: 12px; color: var(--green); opacity: var(--accept-opacity); }
+.swipe-verdict.reject { right: 12px; color: var(--red); opacity: var(--reject-opacity); transform: rotate(7deg); }
 .swipe-card.fly-right { transform: translateX(130%) rotate(14deg); opacity: 0; }
 .swipe-card.fly-left { transform: translateX(-130%) rotate(-14deg); opacity: 0; }
 .swipe-actions { display: flex; align-items: center; justify-content: center; gap: 9px; direction: ltr; }
@@ -437,6 +437,9 @@ h1, h2, p { margin-top: 0; }
 .swipe-action.reject { color: var(--red); border-color: #f2c8cf; }
 .swipe-action.accept { color: var(--green); border-color: #b9d8cf; }
 .swipe-action:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(30,49,43,.09); }
+.apply-review-feedback { width: 100%; border: 0; border-radius: 9px; padding: 9px 12px; background: var(--green); color: #fff; font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.apply-review-feedback:hover { background: #0f3c31; }
+.apply-review-feedback:disabled { opacity: .65; cursor: wait; }
 .swipe-complete { position: absolute; inset: 18px; display: grid; place-content: center; justify-items: center; direction: rtl; text-align: center; color: var(--muted); }
 .swipe-complete > span { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 10px; border-radius: 50%; background: #dff3eb; color: var(--green); font-size: 20px; font-weight: 800; }
 .swipe-complete strong { color: var(--ink); font-size: 13px; }

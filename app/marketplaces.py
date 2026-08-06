@@ -481,7 +481,6 @@ class MarketCrawler:
     async def search(
         self,
         query: str,
-        user_states=None,
         source_queries: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         source_queries = source_queries or {}
@@ -494,7 +493,7 @@ class MarketCrawler:
             for source in MARKETPLACE_SOURCES
         )
         cached = self._cache.get(key)
-        if cached and time.monotonic() - cached[0] < self.cache_seconds and user_states is None:  # TODO: here, I'm killing the cache
+        if cached and time.monotonic() - cached[0] < self.cache_seconds:
             return cached[1]
 
         headers = {
@@ -547,9 +546,8 @@ class MarketCrawler:
             "raw_count": len(listings),
             "search_queries": source_query,
         }
-        if user_states is None:  # TODO: here, I'm killing the cache
-            async with self._lock:
-                self._cache[key] = (time.monotonic(), result)
+        async with self._lock:
+            self._cache[key] = (time.monotonic(), result)
         return result
 
     async def _torob(self, client: httpx.AsyncClient, query: str) -> list[MarketListing]:

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import hashlib
 import logging
 import re
+import time
 from dataclasses import dataclass
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 import httpx
 
@@ -12,6 +16,92 @@ from app.config import settings
 from app.marketplaces import MarketListing
 
 logger = logging.getLogger(__name__)
+
+
+CacheValue = TypeVar("CacheValue")
+
+
+class AsyncTTLCache:
+    """Bounded process-local cache that also coalesces concurrent cache misses.
+
+    TODO: replace or supplement this cache with Redis (or another shared cache)
+    when the application runs with multiple processes/containers. This cache is
+    intentionally local and is cleared on restart.
+    """
+
+    def __init__(self, ttl_seconds: int, max_entries: int = 1_000) -> None:
+        self.ttl_seconds = ttl_seconds
+        self.max_entries = max_entries
+        self._values: dict[str, tuple[float, Any]] = {}
+        self._inflight: dict[str, asyncio.Future[Any]] = {}
+        self._lock = asyncio.Lock()
+
+    async def get_or_compute(
+        self,
+        key: str,
+        compute: Callable[[], Awaitable[CacheValue]],
+        should_cache: Callable[[CacheValue], bool],
+    ) -> CacheValue:
+        now = time.monotonic()
+        async with self._lock:
+            cached = self._values.get(key)
+            if cached:
+                expires_at, value = cached
+                if now < expires_at:
+                    return value
+                del self._values[key]
+
+            pending = self._inflight.get(key)
+            if pending is None:
+                pending = asyncio.get_running_loop().create_future()
+                self._inflight[key] = pending
+                owner = True
+            else:
+                owner = False
+
+        if not owner:
+            return await asyncio.shield(pending)
+
+        try:
+            value = await compute()
+            if should_cache(value):
+                async with self._lock:
+                    # Removing the oldest inserted value bounds memory without
+                    # adding a dependency for a full LRU implementation.
+                    while len(self._values) >= self.max_entries:
+                        self._values.pop(next(iter(self._values)))
+                    self._values[key] = (time.monotonic() + self.ttl_seconds, value)
+            pending.set_result(value)
+            return value
+        except BaseException as exc:
+            pending.set_exception(exc)
+            # The owner receives the exception directly; mark it observed on
+            # the shared Future so an un-awaited owner Future emits no warning.
+            pending.exception()
+            raise
+        finally:
+            async with self._lock:
+                self._inflight.pop(key, None)
+
+
+# These values are deliberately conservative: generated queries are stable for
+# a product, while relevance scores should follow marketplace listing changes.
+_query_cache = AsyncTTLCache(ttl_seconds=7 * 24 * 60 * 60, max_entries=2_000)
+_similarity_cache = AsyncTTLCache(ttl_seconds=60 * 60, max_entries=5_000)
+_QUERY_CACHE_VERSION = "v1"
+_SIMILARITY_CACHE_VERSION = "v1"
+
+
+def _cache_key(namespace: str, version: str, payload: Any) -> str:
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    return f"{namespace}:{version}:{settings.avalai_model}:{digest}"
 
 
 async def _call_llm(prompt: str, max_tokens: int = 8000) -> str | None:
@@ -117,12 +207,24 @@ Product details:
 {context}
 '''
 
-    result = await _call_llm(prompt, max_tokens=200)
-    if result and len(result.strip()) <= 200:
-        optimized = result.strip()
-        logger.info("LLM query optimized: %s -> %s", source_product.get("title", "")[:50], optimized)
-        return optimized
-    return ""
+    async def compute() -> str:
+        result = await _call_llm(prompt, max_tokens=200)
+        if result and len(result.strip()) <= 200:
+            optimized = result.strip()
+            logger.info(
+                "LLM query optimized: %s -> %s",
+                source_product.get("title", "")[:50],
+                optimized,
+            )
+            return optimized
+        return ""
+
+    key = _cache_key(
+        "optimized-search-query",
+        _QUERY_CACHE_VERSION,
+        {"source_context": context},
+    )
+    return await _query_cache.get_or_compute(key, compute, bool)
 
 
 async def optimize_marketplace_queries(title: str) -> dict[str, str]:
@@ -147,29 +249,37 @@ Rules:
 Product title:
 {title[:500]}
 '''
-    content = await _call_llm(prompt, max_tokens=350)
-    if not content:
-        return {}
-    cleaned = content.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.I)
-    try:
-        payload = json.loads(cleaned)
-    except (json.JSONDecodeError, TypeError):
-        logger.warning("LLM marketplace queries were not valid JSON: %s", cleaned[:200])
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    queries: dict[str, str] = {}
-    for key in ("iran", "trendyol", "noon"):
-        value = " ".join(str(payload.get(key) or "").split()).strip(' "')
-        if 2 <= len(value) <= 160 and "http://" not in value and "https://" not in value:
-            queries[key] = value
-    if len(queries) != 3:
-        logger.warning("LLM marketplace query response was incomplete")
-        return {}
-    logger.info("LLM marketplace queries created for link title: %s", title[:80])
-    return queries
+    async def compute() -> dict[str, str]:
+        content = await _call_llm(prompt, max_tokens=350)
+        if not content:
+            return {}
+        cleaned = content.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.I)
+        try:
+            payload = json.loads(cleaned)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("LLM marketplace queries were not valid JSON: %s", cleaned[:200])
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        queries: dict[str, str] = {}
+        for key in ("iran", "trendyol", "noon"):
+            value = " ".join(str(payload.get(key) or "").split()).strip(' "')
+            if 2 <= len(value) <= 160 and "http://" not in value and "https://" not in value:
+                queries[key] = value
+        if len(queries) != 3:
+            logger.warning("LLM marketplace query response was incomplete")
+            return {}
+        logger.info("LLM marketplace queries created for link title: %s", title[:80])
+        return queries
+
+    key = _cache_key(
+        "marketplace-queries",
+        _QUERY_CACHE_VERSION,
+        {"title": title[:500]},
+    )
+    return await _query_cache.get_or_compute(key, compute, bool)
 
 
 def _build_source_context(source_product: dict[str, Any]) -> str:
@@ -194,6 +304,7 @@ async def score_product_similarity(
     query: str,
     listings: list[MarketListing],
     source_product: dict[str, Any] | None = None,
+    feedback: dict[str, list[str]] | None = None,
 ) -> dict[str, float]:
     """Score each listing's similarity to the search query or source product using an LLM.
 
@@ -210,50 +321,91 @@ async def score_product_similarity(
         f"{i + 1}. {listing.title}" for i, listing in enumerate(listings)
     )
 
+    feedback_context = _build_feedback_context(feedback)
     if source_product:
         context = _build_source_context(source_product)
         prompt = _build_product_comparison_prompt(query, context, products_text)
     else:
         prompt = _build_query_comparison_prompt(query, products_text)
+    if feedback_context:
+        prompt = f"{prompt}\n\n{feedback_context}"
 
-    try:
-        content = await _call_llm(prompt, max_tokens=max(8000, len(listings) * 8))
-    except Exception as exc:
-        logger.warning("LLM similarity scoring failed: %s", exc)
-        return {}
+    async def compute() -> dict[str, float]:
+        try:
+            content = await _call_llm(prompt, max_tokens=max(8000, len(listings) * 8))
+        except Exception as exc:
+            logger.warning("LLM similarity scoring failed: %s", exc)
+            return {}
 
-    if not content:
-        logger.warning("LLM similarity scoring returned no content")
-        return {}
+        if not content:
+            logger.warning("LLM similarity scoring returned no content")
+            return {}
 
-    try:
-        scores = json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        logger.warning("LLM response was not valid JSON: %s", content[:200])
-        return {}
+        try:
+            scores = json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("LLM response was not valid JSON: %s", content[:200])
+            return {}
 
-    if not isinstance(scores, list):
-        logger.warning("LLM response was not a list")
-        return {}
+        if not isinstance(scores, list):
+            logger.warning("LLM response was not a list")
+            return {}
 
-    result: dict[str, float] = {}
-    matched = 0
-    for i, listing in enumerate(listings):
-        if i < len(scores) and listing.url:
-            try:
-                score = float(scores[i])
-                score = max(0.0, min(100.0, score)) / 100.0
-                result[listing.url] = score
-                matched += 1
-            except (ValueError, TypeError):
-                continue
-    logger.info(
-        "LLM similarity scoring complete: %d/%d listings scored (query: %s)",
-        matched,
-        len(listings),
-        query,
+        result: dict[str, float] = {}
+        matched = 0
+        for i, listing in enumerate(listings):
+            if i < len(scores) and listing.url:
+                try:
+                    score = float(scores[i])
+                    score = max(0.0, min(100.0, score)) / 100.0
+                    result[listing.url] = score
+                    matched += 1
+                except (ValueError, TypeError):
+                    continue
+        logger.info(
+            "LLM similarity scoring complete: %d/%d listings scored (query: %s)",
+            matched,
+            len(listings),
+            query,
+        )
+        return result
+
+    key = _cache_key(
+        "similarity-scores",
+        _SIMILARITY_CACHE_VERSION,
+        {
+            "query": query,
+            "source_context": _build_source_context(source_product) if source_product else "",
+            "listings": [
+                {"title": listing.title, "url": listing.url}
+                for listing in listings
+            ],
+            "feedback": feedback or {},
+        },
     )
-    return result
+    return await _similarity_cache.get_or_compute(key, compute, bool)
+
+
+def _build_feedback_context(feedback: dict[str, list[str]] | None) -> str:
+    """Format explicit review decisions as extra evidence for a re-evaluation."""
+    if not feedback:
+        return ""
+    accepted = [str(title).strip()[:300] for title in feedback.get("accepted", []) if str(title).strip()]
+    rejected = [str(title).strip()[:300] for title in feedback.get("rejected", []) if str(title).strip()]
+    if not accepted and not rejected:
+        return ""
+    parts = [
+        "The shopper reviewed some search results. Use these decisions as high-priority evidence when scoring the remaining products.",
+        "Do not score rejected products: they have already been removed.",
+    ]
+    if accepted:
+        parts.append("Accepted as comparable:\n" + "\n".join(f"- {title}" for title in accepted[:5]))
+    if rejected:
+        parts.append("Rejected as not comparable:\n" + "\n".join(f"- {title}" for title in rejected[:5]))
+    parts.append(
+        "Infer the decisive product attributes from this feedback (such as product type, model, size, capacity, or accessory versus main product) and penalize remaining products that share the rejected attributes."
+    )
+    return "\n".join(parts)
 
 
 def _build_query_comparison_prompt(query: str, products_text: str) -> str:

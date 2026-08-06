@@ -24,7 +24,17 @@ from pydantic import BaseModel, Field
 
 import httpx
 
-from app.basalam import BasalamError, basalam, decrypt_token, encrypt_token, fetch_basalam_product, fetch_basalam_store, _basalam_product_id_from_url, _basalam_store_id_from_url
+from app.basalam import (
+    BasalamError,
+    basalam,
+    decrypt_token,
+    encrypt_token,
+    fetch_basalam_product,
+    fetch_basalam_store,
+    fetch_store_product_list,
+    _basalam_product_id_from_url,
+    _basalam_store_id_from_url,
+)
 from app.config import refresh_settings, save_admin_overrides, settings, _env_file_paths
 from app.currency_notifications import check_usdt_rate_change
 from app.db import connection, init_db, now_iso, rows, seed_demo
@@ -551,6 +561,13 @@ class ComparableRecalculationInput(BaseModel):
     listings: list[ComparableListingInput] = Field(min_length=3, max_length=72)
 
 
+class FeedbackReevaluationInput(ComparableRecalculationInput):
+    query: str = Field(min_length=2, max_length=500)
+    source_product: dict[str, Any] | None = None
+    accepted_urls: list[str] = Field(default_factory=list, max_length=72)
+    rejected_urls: list[str] = Field(default_factory=list, max_length=72)
+
+
 class RangeOverrideInput(BaseModel):
     min_price: int | None = Field(default=None, gt=0)
     max_price: int | None = Field(default=None, gt=0)
@@ -1029,6 +1046,58 @@ def recalculate_comparables(payload: ComparableRecalculationInput) -> dict[str, 
             "analysis": analysis,
             "analysis_variants": variants,
             "listing_groups": groups,
+        }
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/api/market/re-evaluate")
+async def reevaluate_comparables_with_feedback(
+    payload: FeedbackReevaluationInput,
+) -> dict[str, Any]:
+    """Apply a batch of review decisions with one optional LLM scoring call."""
+    rejected_urls = set(payload.rejected_urls)
+    accepted_urls = set(payload.accepted_urls) - rejected_urls
+    all_urls = {item.url for item in payload.listings}
+    if not rejected_urls.issubset(all_urls) or not accepted_urls.issubset(all_urls):
+        raise HTTPException(422, "بازخورد باید به نتایج همین تحلیل تعلق داشته باشد.")
+
+    remaining_inputs = [item for item in payload.listings if item.url not in rejected_urls]
+    listings = [
+        MarketListing(
+            source=item.source,
+            title=item.title,
+            price=item.price,
+            url=item.url,
+            image_url=item.image_url,
+            similarity=item.similarity,
+            native_price=item.native_price,
+            native_currency=item.native_currency,
+        )
+        for item in remaining_inputs
+    ]
+    feedback = {
+        "accepted": [item.title for item in payload.listings if item.url in accepted_urls],
+        "rejected": [item.title for item in payload.listings if item.url in rejected_urls],
+    }
+    llm_scores = {
+        item.url: item.llm_similarity
+        for item in remaining_inputs
+        if item.llm_similarity is not None
+    }
+    if settings.llm_similarity_enabled and settings.avalai_api_key:
+        refreshed_scores = await score_product_similarity(
+            payload.query, listings, payload.source_product, feedback
+        )
+        if refreshed_scores:
+            llm_scores = refreshed_scores
+    try:
+        analysis, variants, groups = _market_analysis_variants(listings, llm_scores)
+        return {
+            "analysis": analysis,
+            "analysis_variants": variants,
+            "listing_groups": groups,
+            "used_llm": bool(settings.llm_similarity_enabled and settings.avalai_api_key),
         }
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc

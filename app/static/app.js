@@ -15,6 +15,7 @@ let currentAnalysis = null;
 let currentSliderBands = null;
 let swipeReviewItems = [];
 const reviewedListingUrls = new Set();
+const reviewedListingRatings = new Map();
 let comparableUpdatePending = false;
 let userRemovedComparableCount = 0;
 let includeForeignPricing = false;
@@ -164,6 +165,7 @@ async function fetchSampleProducts() {
 async function analyze(productName) {
   productName = cleanMarketplaceInput(productName);
   reviewedListingUrls.clear();
+  reviewedListingRatings.clear();
   userRemovedComparableCount = 0;
   includeForeignPricing = false;
   const nextUrl = new URL(window.location.href);
@@ -488,47 +490,82 @@ function sendSimilarityFeedback(listing, rating) {
 }
 
 async function removeComparable(url) {
-  if (comparableUpdatePending) return false;
+  if (comparableUpdatePending || reviewedListingRatings.has(url)) return false;
   const groups = currentAnalysis?.listing_groups || {};
   const listings = [...(groups.internal || []), ...(groups.foreign || [])];
-  const normalizedTarget = normalizeUrl(url);
-  const listing = listings.find(item => normalizeUrl(item.url) === normalizedTarget);
+  const listing = listings.find(item => item.url === url || normalizeUrl(item.url) === normalizeUrl(url));
   if (!listing) return false;
   const internalListings = groups.internal || [];
   const isInternal = !["trendyol", "noon_uae"].includes(listing.source);
-  if (listings.length <= 3 || (isInternal && internalListings.length <= 3)) {
+  const rejected = [...reviewedListingRatings.entries()].filter(([, rating]) => rating < 0);
+  const rejectedInternal = rejected.filter(([rejectedUrl]) => {
+    const item = listings.find(candidate => candidate.url === rejectedUrl);
+    return item && !["trendyol", "noon_uae"].includes(item.source);
+  });
+  if (listings.length - rejected.length <= 3 || (isInternal && internalListings.length - rejectedInternal.length <= 3)) {
     const progress = document.querySelector("#swipe-progress");
     if (progress) progress.textContent = "برای تحلیل حداقل ۳ قیمت از بازار ایران لازم است";
     return false;
   }
-
-  comparableUpdatePending = true;
-  document.querySelectorAll(".remove-listing-button").forEach(button => { button.disabled = true; });
+  reviewedListingRatings.set(listing.url, -1);
   sendSimilarityFeedback(listing, -1);
+  document.querySelectorAll(".listing-card").forEach(card => {
+    if (normalizeUrl(card.dataset.url) === normalizeUrl(listing.url)) card.remove();
+  });
+  updateReviewButton();
+  const progress = document.querySelector("#swipe-progress");
+  if (progress) progress.textContent = "بازخورد ثبت شد؛ برای بازبینی، دکمه اعمال را بزنید";
+  return true;
+}
+
+function updateReviewButton() {
+  const button = document.querySelector("#apply-review-feedback");
+  if (!button) return;
+  button.hidden = reviewedListingRatings.size === 0;
+  button.disabled = comparableUpdatePending;
+  if (!comparableUpdatePending) {
+    button.textContent = `اعمال ${fa(reviewedListingRatings.size)} بازخورد و بازبینی نتایج`;
+  }
+}
+
+async function applyReviewFeedback() {
+  if (comparableUpdatePending || !currentAnalysis || !reviewedListingRatings.size) return;
+  const groups = currentAnalysis.listing_groups || {};
+  const listings = [...(groups.internal || []), ...(groups.foreign || [])];
+  const acceptedUrls = [...reviewedListingRatings.entries()].filter(([, rating]) => rating > 0).map(([url]) => url);
+  const rejectedUrls = [...reviewedListingRatings.entries()].filter(([, rating]) => rating < 0).map(([url]) => url);
+  comparableUpdatePending = true;
+  const button = document.querySelector("#apply-review-feedback");
+  if (button) { button.disabled = true; button.textContent = "در حال بازبینی با بازخورد شما…"; }
   try {
-    const remaining = listings.filter(item => item !== listing);
-    const response = await fetch("/api/market/recalculate", {
+    const response = await fetch("/api/market/re-evaluate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listings: remaining }),
+      body: JSON.stringify({
+        query: currentAnalysis.query,
+        source_product: currentAnalysis.source_product || null,
+        listings,
+        accepted_urls: acceptedUrls,
+        rejected_urls: rejectedUrls,
+      }),
     });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.detail || "محاسبه دوباره انجام نشد.");
-    userRemovedComparableCount += 1;
+    if (!response.ok) throw new Error(body.detail || "بازبینی انجام نشد.");
+    userRemovedComparableCount += rejectedUrls.length;
+    reviewedListingUrls.clear();
+    reviewedListingRatings.clear();
     currentAnalysis.analysis = body.analysis;
     currentAnalysis.analysis_variants = body.analysis_variants;
     currentAnalysis.listing_groups = body.listing_groups;
     renderResult(currentAnalysis);
     const progress = document.querySelector("#swipe-progress");
-    if (progress) progress.textContent = "قیمت حذف و پیشنهاد به‌روز شد";
-    return true;
+    if (progress) progress.textContent = body.used_llm ? "نتایج با بازخورد شما بازبینی شد" : "نتایج با بازخورد شما به‌روزرسانی شد";
   } catch (error) {
     const progress = document.querySelector("#swipe-progress");
     if (progress) progress.textContent = error.message;
-    document.querySelectorAll(".remove-listing-button").forEach(button => { button.disabled = false; });
-    return false;
   } finally {
     comparableUpdatePending = false;
+    updateReviewButton();
   }
 }
 
@@ -551,13 +588,16 @@ function setupSwipeReview() {
   const complete = document.querySelector("#swipe-complete");
   const actions = panel.querySelector(".swipe-actions");
   const listings = currentAnalysis?.analysis?.listings || [];
-  swipeReviewItems = listings.filter(item => !reviewedListingUrls.has(item.url)).slice(0, 5);
+  swipeReviewItems = listings.filter(
+    item => !reviewedListingUrls.has(item.url) && !reviewedListingRatings.has(item.url)
+  ).slice(0, 5);
   panel.hidden = listings.length === 0;
   if (!listings.length) return;
   if (!swipeReviewItems.length) {
     deck.innerHTML = "";
     complete.hidden = false;
     actions.hidden = true;
+    updateReviewButton();
     return;
   }
   complete.hidden = true;
@@ -568,6 +608,7 @@ function setupSwipeReview() {
   ).join("");
   const progress = document.querySelector("#swipe-progress");
   if (progress) progress.textContent = `${fa(reviewedListingUrls.size)} مورد بررسی شده`;
+  updateReviewButton();
   const activeCard = deck.querySelector(".swipe-card:not(.behind)");
   if (!activeCard) return;
 
@@ -613,7 +654,9 @@ async function completeSwipe(rating, card = document.querySelector(".swipe-card:
   card.classList.add(rating > 0 ? "fly-right" : "fly-left");
   reviewedListingUrls.add(listing.url);
   if (rating > 0) {
+    reviewedListingRatings.set(listing.url, 1);
     await sendSimilarityFeedback(listing, 1);
+    updateReviewButton();
     setTimeout(setupSwipeReview, 220);
   } else {
     const removed = await removeComparable(listing.url);
@@ -802,6 +845,7 @@ document.querySelector("#include-foreign-prices").addEventListener("change", eve
 });
 document.querySelector("#swipe-reject").addEventListener("click", () => completeSwipe(-1));
 document.querySelector("#swipe-accept").addEventListener("click", () => completeSwipe(1));
+document.querySelector("#apply-review-feedback").addEventListener("click", applyReviewFeedback);
 window.addEventListener("resize", () => {
   applySliderMarkerLayout();
   if (!currentAnalysis) return;
