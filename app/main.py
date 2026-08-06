@@ -1521,9 +1521,13 @@ def connect_basalam(renew: str | None = None) -> RedirectResponse:
         raise HTTPException(503, "Basalam OAuth credentials are not configured.")
     state = secrets.token_urlsafe(32)
     trace_id = secrets.token_hex(12)
+    renewing_analytics = renew == "analytics"
     started = time.perf_counter()
     try:
-        authorization_url = basalam.authorization_url(state)
+        authorization_url = basalam.authorization_url(
+            state,
+            include_analytics=renewing_analytics,
+        )
     except ValueError as exc:
         logger.warning(
             "oauth_authorization_failed trace_id=%s stage=authorization_url error=%s",
@@ -1536,8 +1540,8 @@ def connect_basalam(renew: str | None = None) -> RedirectResponse:
         "state_fingerprint=%s elapsed_ms=%s",
         trace_id,
         settings.redirect_uri,
-        basalam.requested_scopes(),
-        renew == "analytics",
+        basalam.requested_scopes(include_analytics=renewing_analytics),
+        renewing_analytics,
         _fingerprint(state),
         round((time.perf_counter() - started) * 1000),
     )
@@ -1553,6 +1557,14 @@ def connect_basalam(renew: str | None = None) -> RedirectResponse:
     response.set_cookie(
         "oauth_trace",
         trace_id,
+        max_age=600,
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+    )
+    response.set_cookie(
+        "oauth_intent",
+        "analytics" if renewing_analytics else "login",
         max_age=600,
         httponly=True,
         secure=settings.app_env == "production",
@@ -1672,6 +1684,8 @@ async def auth_callback(
     error_description: str | None = None,
 ) -> RedirectResponse:
     trace_id = request.cookies.get("oauth_trace") or secrets.token_hex(12)
+    oauth_intent = request.cookies.get("oauth_intent") or "login"
+    renewing_analytics = oauth_intent == "analytics"
     callback_started = time.perf_counter()
     expected = request.cookies.get("oauth_state", "")
     if not expected or not state or not hmac.compare_digest(expected, state):
@@ -1745,20 +1759,98 @@ async def auth_callback(
             _fingerprint(vendor.get("id")),
         )
         oauth_stage = "account_persistence"
+        existing_rows = rows(
+            """SELECT access_token,refresh_token,token_expires_at,oauth_scopes,
+            analytics_synced_at,analytics_status,analytics_error,
+            analytics_consent_at FROM accounts WHERE user_id=?""",
+            (user["id"],),
+        )
+        existing = existing_rows[0] if existing_rows else None
+        requested_scopes = basalam.requested_scopes(
+            include_analytics=renewing_analytics
+        )
+        token_scope_value = token_data.get("scope")
+        if isinstance(token_scope_value, str):
+            received_scopes = token_scope_value.replace(",", " ").split()
+        elif isinstance(token_scope_value, list):
+            received_scopes = [str(scope) for scope in token_scope_value]
+        else:
+            received_scopes = requested_scopes
+        received_scope_text = " ".join(dict.fromkeys(received_scopes))
+
+        # A normal SSO login proves identity; it must not replace a previously
+        # working analytics grant with a narrower login token. Only the explicit
+        # analytics renewal flow is allowed to replace that elevated grant.
+        existing_scope_set = set((existing or {}).get("oauth_scopes", "").split())
+        preserve_existing_grant = bool(
+            existing
+            and not renewing_analytics
+            and (existing.get("analytics_status") in {"ready", "partial"})
+            and (
+                "vendor.parcel.read" in existing_scope_set
+                or existing.get("analytics_consent_at")
+            )
+        )
+        stored_access_token = (
+            existing["access_token"]
+            if preserve_existing_grant
+            else encrypt_token(access)
+        )
+        stored_refresh_token = (
+            existing.get("refresh_token")
+            if preserve_existing_grant
+            else (
+                encrypt_token(token_data["refresh_token"])
+                if token_data.get("refresh_token")
+                else (existing.get("refresh_token") if existing else None)
+            )
+        )
+        stored_expiry = (
+            existing.get("token_expires_at")
+            if preserve_existing_grant
+            else token_expiry_iso(token_data.get("expires_in"))
+        )
+        analytics_status = (
+            "pending"
+            if renewing_analytics or not existing
+            else existing.get("analytics_status") or "pending"
+        )
+        analytics_error = (
+            None
+            if renewing_analytics or not existing
+            else existing.get("analytics_error")
+        )
+        analytics_synced_at = (
+            existing.get("analytics_synced_at") if existing else None
+        )
+        analytics_consent_at = (
+            now_iso()
+            if renewing_analytics
+            else (existing.get("analytics_consent_at") if existing else None)
+        )
+        stored_scope_text = (
+            existing.get("oauth_scopes")
+            if preserve_existing_grant
+            else received_scope_text
+        )
         with connection() as db:
             db.execute(
                 """INSERT INTO accounts
                 (user_id,vendor_id,vendor_title,user_name,vendor_slug,access_token,refresh_token,
                  token_expires_at,connected_at,sync_status,analytics_status,
-                 analytics_error)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                 analytics_error,analytics_synced_at,analytics_consent_at,oauth_scopes)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(user_id) DO UPDATE SET
                   vendor_id=excluded.vendor_id, vendor_title=excluded.vendor_title,
                   user_name=excluded.user_name, vendor_slug=excluded.vendor_slug,
                   access_token=excluded.access_token, refresh_token=excluded.refresh_token,
                   token_expires_at=excluded.token_expires_at,
                   connected_at=excluded.connected_at,sync_status='queued',
-                  sync_error=NULL,analytics_status='pending',analytics_error=NULL""",
+                  sync_error=NULL,analytics_status=excluded.analytics_status,
+                  analytics_error=excluded.analytics_error,
+                  analytics_synced_at=excluded.analytics_synced_at,
+                  analytics_consent_at=excluded.analytics_consent_at,
+                  oauth_scopes=excluded.oauth_scopes""",
                 (
                     user["id"],
                     vendor["id"],
@@ -1768,13 +1860,16 @@ async def auth_callback(
                     or vendor.get("username")
                     or vendor.get("handle")
                     or user.get("username"),
-                    encrypt_token(access),
-                    encrypt_token(token_data["refresh_token"]) if token_data.get("refresh_token") else None,
-                    token_expiry_iso(token_data.get("expires_in")),
+                    stored_access_token,
+                    stored_refresh_token,
+                    stored_expiry,
                     now_iso(),
                     "queued",
-                    "pending",
-                    None,
+                    analytics_status,
+                    analytics_error,
+                    analytics_synced_at,
+                    analytics_consent_at,
+                    stored_scope_text,
                 ),
             )
         logger.info(
@@ -1830,6 +1925,7 @@ async def auth_callback(
     response = RedirectResponse("/merchant")
     response.delete_cookie("oauth_state")
     response.delete_cookie("oauth_trace")
+    response.delete_cookie("oauth_intent")
     response.set_cookie(
         COOKIE_NAME,
         create_session(int(user["id"])),
@@ -1866,7 +1962,7 @@ def merchant_dashboard(request: Request) -> dict[str, Any]:
     account_rows = rows(
         """SELECT user_id,vendor_id,vendor_title,user_name,last_synced_at,
         sync_status,sync_error,marketplace,analytics_synced_at,analytics_status,
-        analytics_error FROM accounts WHERE user_id=?""",
+        analytics_error,analytics_consent_at FROM accounts WHERE user_id=?""",
         (user_id,),
     )
     if not account_rows:

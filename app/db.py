@@ -275,6 +275,8 @@ def init_db() -> None:
             "analytics_synced_at": "ALTER TABLE accounts ADD COLUMN analytics_synced_at TEXT",
             "analytics_status": "ALTER TABLE accounts ADD COLUMN analytics_status TEXT NOT NULL DEFAULT 'pending'",
             "analytics_error": "ALTER TABLE accounts ADD COLUMN analytics_error TEXT",
+            "analytics_consent_at": "ALTER TABLE accounts ADD COLUMN analytics_consent_at TEXT",
+            "oauth_scopes": "ALTER TABLE accounts ADD COLUMN oauth_scopes TEXT NOT NULL DEFAULT ''",
         }
         for column, statement in account_analytics_migrations.items():
             if column not in account_columns:

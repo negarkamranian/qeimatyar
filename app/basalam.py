@@ -56,7 +56,7 @@ class BasalamClient:
     api_base = "https://openapi.basalam.com/v1"
     auth_base = "https://auth.basalam.com"
 
-    def requested_scopes(self) -> list[str]:
+    def requested_scopes(self, *, include_analytics: bool = False) -> list[str]:
         """Return the least-privilege scopes required by the current product.
 
         Optional analytics scopes are used only when explicitly configured.
@@ -64,6 +64,10 @@ class BasalamClient:
         """
         configured = settings.scopes.split()
         scopes = list(dict.fromkeys(configured))
+        if include_analytics:
+            scopes.extend(
+                scope for scope in sorted(ANALYTICS_OAUTH_SCOPES) if scope not in scopes
+            )
         unsafe_scopes = [scope for scope in scopes if not scope.endswith(".read")]
         if unsafe_scopes:
             raise ValueError(
@@ -78,8 +82,8 @@ class BasalamClient:
             )
         return scopes
 
-    def authorization_url(self, state: str) -> str:
-        scopes = self.requested_scopes()
+    def authorization_url(self, state: str, *, include_analytics: bool = False) -> str:
+        scopes = self.requested_scopes(include_analytics=include_analytics)
         query = urlencode(
             {
                 "client_id": settings.client_id,

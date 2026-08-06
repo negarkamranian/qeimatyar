@@ -270,7 +270,10 @@ class MerchantSyncService:
             )
 
         sales_error: Exception | None = None
-        if "vendor.parcel.read" in settings.scopes.split():
+        granted_scopes = set(
+            (account.get("oauth_scopes") or settings.scopes or "").split()
+        )
+        if "vendor.parcel.read" in granted_scopes:
             try:
                 parcels = await basalam.vendor_parcels(token, int(account["vendor_id"]))
             except Exception as exc:

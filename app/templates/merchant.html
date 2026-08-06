@@ -11,64 +11,132 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/merchant.css?v=20260805-4">
+  <link rel="stylesheet" href="/static/merchant.css?v=20260806-3">
 </head>
-<body>
-  <header class="simple-header">
-    <a class="brand" href="/">
-      <span class="brand-mark">
-        <img src="/static/logo.jpg" alt="دقیقه" onload="this.nextElementSibling.hidden=true" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
-        <span class="brand-mark-fallback">ق</span>
-      </span>
-      <span><strong>دقیقه</strong><small>پیشنهاد دهنده هوشمند لحظه‌ای قیمت</small></span>
-    </a>
-    <div class="account-actions">
-      <a class="notification-button" href="/merchant/notifications" aria-label="اعلان‌ها">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
-          <path d="M10 21h4"></path>
-        </svg>
-        <span id="notifications-badge" class="notification-badge" hidden>۰</span>
+<body class="merchant-body">
+  <header class="simple-header merchant-header">
+    <div class="merchant-header-inner">
+      <a class="brand" href="/merchant" aria-label="داشبورد دقیقه">
+        <span class="brand-mark">
+          <img src="/static/logo.jpg" alt="" onload="this.nextElementSibling.hidden=true" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
+          <span class="brand-mark-fallback">ق</span>
+        </span>
+        <span><strong>دقیقه</strong><small>دستیار قیمت‌گذاری فروشگاه</small></span>
       </a>
-      <a href="/">جست‌وجوی تکی</a>
-      <form method="post" action="/logout"><button>خروج</button></form>
+
+      <nav class="merchant-nav" aria-label="بخش‌های داشبورد">
+        <a class="active" href="#overview">نمای کلی</a>
+        <a href="#actions">پیشنهادها</a>
+        <a href="#analytics">تحلیل فروش</a>
+        <a href="#products">محصولات</a>
+      </nav>
+
+      <div class="account-actions">
+        <a class="single-search-link" href="/">جست‌وجوی بازار</a>
+        <a class="notification-button" href="/merchant/notifications" aria-label="اعلان‌ها">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+            <path d="M10 21h4"></path>
+          </svg>
+          <span id="notifications-badge" class="notification-badge" hidden>۰</span>
+        </a>
+        <details class="account-menu">
+          <summary aria-label="حساب کاربری"><span>{{ (account.vendor_title or 'غ')[:1] }}</span></summary>
+          <div class="account-menu-popover">
+            <strong>{{ account.vendor_title }}</strong>
+            <small>{{ account.user_name or 'غرفه‌دار' }}</small>
+            <a href="/">جست‌وجوی تکی</a>
+            <form method="post" action="/logout"><button>خروج از حساب</button></form>
+          </div>
+        </details>
+      </div>
     </div>
   </header>
 
   <main class="merchant-main">
-    <section class="merchant-head">
-      <div>
-        <p class="eyebrow">{{ 'فروشگاه دیجی‌کالا' if account.marketplace == 'digikala' else 'غرفه باسلام' }} متصل</p>
-        <h1>{{ account.vendor_title }}</h1>
-        <p id="sync-caption">در حال دریافت وضعیت…</p>
+    <section id="overview" class="dashboard-hero">
+      <div class="merchant-head">
+        <div class="store-heading">
+          <span class="connection-pill"><i></i>{{ 'دیجی‌کالا' if account.marketplace == 'digikala' else 'باسلام' }} متصل است</span>
+          <h1>سلام، به {{ account.vendor_title }} خوش آمدید.</h1>
+          <p>مهم‌ترین تصمیم‌های قیمت‌گذاری امروز، یک‌جا و به ترتیب اولویت.</p>
+        </div>
+        <div class="merchant-sync-actions">
+          <button id="sync-button" class="sync-button primary">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9A7 7 0 0 1 18 6.5L20 11M4 13l2 4.5A7 7 0 0 0 17.9 15"></path></svg>
+            به‌روزرسانی تحلیل‌ها
+          </button>
+          <button id="sync-products-button" class="sync-button">دریافت محصولات</button>
+        </div>
       </div>
-      <div class="merchant-sync-actions">
-        <button id="sync-button" class="sync-button primary">به‌روزرسانی قیمت‌ها</button>
-        <button id="sync-products-button" class="sync-button">دریافت دوباره محصولات</button>
+
+      <div class="overview-grid" aria-live="polite">
+        <article class="overview-card overview-primary">
+          <span class="overview-icon blue">↗</span>
+          <small>پیشنهاد آماده</small>
+          <strong id="summary-ready">—</strong>
+          <p>محصول با قیمت پیشنهادی قابل بررسی</p>
+        </article>
+        <article class="overview-card">
+          <span class="overview-icon violet">◇</span>
+          <small>همه محصولات</small>
+          <strong id="summary-products">—</strong>
+          <p>محصول متصل به دقیقه</p>
+        </article>
+        <article class="overview-card">
+          <span class="overview-icon amber">!</span>
+          <small>نیازمند بررسی</small>
+          <strong id="summary-review">—</strong>
+          <p>محصول بدون تحلیل کامل بازار</p>
+        </article>
+        <article class="overview-card">
+          <span class="overview-icon green">✓</span>
+          <small>دسترسی تحلیل فروش</small>
+          <strong id="summary-analytics">در حال بررسی</strong>
+          <p id="summary-analytics-copy">وضعیت داده‌های فروش باسلام</p>
+        </article>
       </div>
-    </section>
 
-    <div class="calm-note">
-      <span>◎</span>
-      <p>قیمت محصولات شما در {{ 'دیجی‌کالا' if account.marketplace == 'digikala' else 'باسلام' }} بدون تاییدتان تغییر نمی‌کند.</p>
-    </div>
-
-    <section id="strategic-insights" class="strategic-insights" aria-live="polite">
-      <div class="strategic-insights-loading">در حال ساخت پیشنهادهای استراتژیک امروز…</div>
-    </section>
-
-    <section id="premium-insights" class="premium-insights" aria-live="polite">
-      <div class="premium-loading">در حال آماده‌سازی تصویر ۱۸۰ روزه فروش…</div>
-    </section>
-
-    <section class="products-section">
-      <div class="section-title">
-        <div><h2>پیشنهاد قیمت محصولات</h2><p>برای دیدن جزئیات قیمت و محصولات مشابه، روی محصول یا «تحلیل بازار» بزنید.</p></div>
-        <input id="product-filter" type="search" placeholder="جست‌وجو بین محصولات">
+      <div class="hero-status">
+        <div class="sync-caption-wrap"><span class="live-dot"></span><p id="sync-caption">در حال دریافت وضعیت…</p></div>
+        <p class="safety-copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6l-7-3Z"></path><path d="m9 12 2 2 4-4"></path></svg>قیمت هیچ محصولی بدون تأیید شما تغییر نمی‌کند.</p>
       </div>
+
       <div id="sync-state" class="sync-state" hidden>
         <span class="spinner"></span>
-        <div><strong>در حال بررسی بازار</strong><p>این کار برای اولین همگام‌سازی کمی زمان می‌برد.</p></div>
+        <div><strong>دقیقه در حال بررسی بازار است</strong><p>می‌توانید صفحه را باز بگذارید؛ نتیجه خودکار نمایش داده می‌شود.</p></div>
+      </div>
+    </section>
+
+    <section id="actions" class="dashboard-section actions-section">
+      <div class="dashboard-section-title">
+        <div><span>قدم بعدی</span><h2>پیشنهادهای امروز</h2><p>از مهم‌ترین اقدام شروع کنید؛ هر کارت مستقیم به محصول مربوط می‌رسد.</p></div>
+        <button class="text-action" type="button" data-scroll-products>مشاهده همه محصولات <b>←</b></button>
+      </div>
+      <div id="strategic-insights" class="strategic-insights" aria-live="polite">
+        <div class="strategic-insights-loading"><span class="spinner"></span>در حال ساخت پیشنهادهای امروز…</div>
+      </div>
+    </section>
+
+    <section id="analytics" class="dashboard-section analytics-section">
+      <div class="dashboard-section-title">
+        <div><span>تصویر بزرگ‌تر</span><h2>تحلیل فروش</h2><p>اثر قیمت روی فروش و درآمد را در یک نگاه دنبال کنید.</p></div>
+      </div>
+      <div id="premium-insights" class="premium-insights" aria-live="polite">
+        <div class="premium-loading"><span class="spinner"></span>در حال آماده‌سازی تحلیل فروش…</div>
+      </div>
+    </section>
+
+    <section id="products" class="dashboard-section products-section">
+      <div class="dashboard-section-title products-title">
+        <div><span>مدیریت روزانه</span><h2>محصولات و قیمت‌ها</h2><p>قیمت فعلی و پیشنهاد دقیقه را کنار هم ببینید و تصمیم بگیرید.</p></div>
+        <label class="product-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+          <input id="product-filter" type="search" placeholder="جست‌وجوی محصول">
+        </label>
+      </div>
+      <div class="product-table-head" aria-hidden="true">
+        <span>محصول</span><span>قیمت فعلی</span><span>پیشنهاد دقیقه</span><span>اقدام</span>
       </div>
       <div id="products-list" class="products-list">
         <div class="empty-state">در حال بارگذاری…</div>
@@ -77,6 +145,6 @@
   </main>
 
   <script src="/static/global_notifications.js" defer></script>
-  <script src="/static/merchant.js?v=20260805-4" defer></script>
+  <script src="/static/merchant.js?v=20260806-3" defer></script>
 </body>
 </html>

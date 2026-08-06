@@ -118,38 +118,46 @@ function renderPremium(premium, account = {}) {
     node.className = "premium-insights";
     node.innerHTML = `
       <div class="premium-head">
-        <div><p class="eyebrow">تصویر ${fa(premium.window_days)} روزه</p><h2>اثر قیمت‌گذاری روی درآمد</h2><p>${escapeHtml(analytics.disclaimer)}</p></div>
+        <div><p class="eyebrow">تصویر ${fa(premium.window_days)} روزه فروش</p><h2>اثر قیمت‌گذاری روی درآمد</h2><p>${escapeHtml(analytics.disclaimer)}</p></div>
         <span class="premium-pill">اشتراک حرفه‌ای فعال</span>
       </div>
       <div class="premium-cards">
-        <article class="premium-card"><small>فرصت درآمدی سناریویی</small><strong>${toman(analytics.estimated_revenue_opportunity)} تومان</strong><span>بازآزمایی پیشنهاد فعلی روی فروش واقعی</span></article>
-        <article class="premium-card"><small>درآمد فروش‌های ردیابی‌شده</small><strong>${toman(analytics.tracked_revenue)} تومان</strong><span>${fa(analytics.tracked_sales)} واحد فروش در داده قابل دریافت</span></article>
-        <article class="premium-card"><small>داده رقابتی</small><strong>باز شده</strong><span>رصد ذخیره‌شده قیمت و لینک رقبا</span></article>
+        <article class="premium-card"><small>فرصت درآمدی برآوردشده</small><strong>${toman(analytics.estimated_revenue_opportunity)} تومان</strong><span>اگر پیشنهاد فعلی روی فروش‌های گذشته اعمال می‌شد</span></article>
+        <article class="premium-card"><small>درآمد ثبت‌شده</small><strong>${toman(analytics.tracked_revenue)} تومان</strong><span>بر پایه ${fa(analytics.tracked_sales)} فروش دریافت‌شده از باسلام</span></article>
+        <article class="premium-card"><small>داده رقبا</small><strong>فعال</strong><span>قیمت، لینک و روند تغییرات رقبا</span></article>
       </div>`;
     return;
   }
 
   const needsConsent = account.analytics_status === "needs_consent";
-  const readyCopy = premium.teaser.has_sales_history
-    ? "فروش تاریخی شما دریافت شده؛ عدد فرصت درآمدی پشت اشتراک حرفه‌ای آماده است."
-    : needsConsent
-      ? "با تمدید دسترسی باسلام، فروش تاریخی هم به این تحلیل اضافه می‌شود."
-      : "تاریخچه فروش در همگام‌سازی‌های باسلام بررسی می‌شود.";
+  const analyticsPending = ["pending", "running"].includes(account.analytics_status);
+  const readyCopy = needsConsent
+    ? "برای افزودن فروش‌های گذشته به تحلیل، دسترسی فقط‌خواندنی سفارش‌های باسلام را یک‌بار تأیید کنید."
+    : analyticsPending
+      ? "دسترسی فروش در حال بررسی است؛ نتیجه همین‌جا و بدون اقدام دیگری نمایش داده می‌شود."
+      : premium.teaser.has_sales_history
+        ? "تاریخچه فروش دریافت شده و تحلیل درآمدی شما آماده فعال‌سازی است."
+        : "با ثبت داده بیشتر، رابطه قیمت، فروش و درآمد دقیق‌تر می‌شود.";
   const consentLink = needsConsent
-    ? `<a class="premium-consent-link" data-basalam-renew href="/auth/basalam?renew=analytics">تمدید دسترسی خواندنی باسلام</a>`
+    ? `<a class="premium-consent-link" data-basalam-renew href="/auth/basalam?renew=analytics">تأیید دسترسی فروش باسلام</a>`
     : "";
   node.className = "premium-insights premium-lock";
   node.innerHTML = `
-    <div class="premium-preview" aria-hidden="true">
-      <div class="premium-head"><div><p class="eyebrow">تصویر ${fa(premium.window_days)} روزه</p><h2>اثر قیمت‌گذاری روی درآمد</h2></div></div>
-      <div class="premium-cards">
-        <article class="premium-card"><small>فرصت درآمدی سناریویی</small><strong>۰٬۰۰۰٬۰۰۰ تومان</strong><span>بازآزمایی پیشنهاد قیمت</span></article>
-        <article class="premium-card"><small>درآمد ردیابی‌شده</small><strong>۰٬۰۰۰٬۰۰۰ تومان</strong><span>فروش تاریخی غرفه</span></article>
-        <article class="premium-card"><small>رقبای معتبر</small><strong>۰ فروشنده</strong><span>قیمت و لینک مستقیم</span></article>
+    <div class="premium-lock-content">
+      <div class="premium-lock-copy">
+        <span class="analytics-lock-icon">⌁</span>
+        <strong>${escapeHtml(premium.teaser.title)}</strong>
+        <p>${escapeHtml(readyCopy)}</p>
+        <div class="premium-actions">
+          ${consentLink}
+          <span class="premium-plan-note">این امکانات در اشتراک حرفه‌ای باز می‌شوند</span>
+        </div>
       </div>
-    </div>
-    <div class="premium-lock-overlay">
-      <div class="premium-lock-copy"><strong>${escapeHtml(premium.teaser.title)}</strong><p>${escapeHtml(readyCopy)}</p><button class="premium-unlock" type="button">دیدن تحلیل و قیمت رقبا</button>${consentLink}</div>
+      <div class="premium-feature-list" aria-label="امکانات تحلیل حرفه‌ای">
+        <div class="premium-feature"><i>↗</i><div><span>فرصت درآمدی</span><small>برآورد بر پایه فروش واقعی</small></div></div>
+        <div class="premium-feature"><i>≋</i><div><span>روند قیمت و فروش</span><small>نمای ${fa(premium.window_days)} روزه هر محصول</small></div></div>
+        <div class="premium-feature"><i>◎</i><div><span>تحلیل رقبا</span><small>قیمت و لینک فروشندگان مشابه</small></div></div>
+      </div>
     </div>`;
 }
 
@@ -276,17 +284,11 @@ function renderStrategicInsights(products, summary = {}) {
   if (!products.length) {
     node.className = "strategic-insights empty";
     node.innerHTML = `
-      <div class="strategic-head">
-        <div><p class="eyebrow">استراتژی فروش</p><h2>۳ اقدام پیشنهادی امروز</h2><p>بعد از دریافت محصولات، دقیقه اولویت‌های فروش و قیمت‌گذاری را اینجا می‌چیند.</p></div>
-      </div>`;
+      <div class="strategy-empty"><strong>هنوز پیشنهادی ساخته نشده است.</strong><p>محصولات را دریافت کنید تا دقیقه مهم‌ترین اقدام‌های امروز را اینجا بچیند.</p></div>`;
     return;
   }
   node.className = "strategic-insights";
   node.innerHTML = `
-    <div class="strategic-head">
-      <div><p class="eyebrow">استراتژی فروش</p><h2>۳ اقدام پیشنهادی امروز</h2><p>بر اساس فاصله قیمت فعلی با بازار، موجودی و وضعیت تحلیل محصولات.</p></div>
-      <span class="strategy-stamp">${fa(products.length)} محصول رصد شد</span>
-    </div>
     <div class="strategy-grid">
       ${buildStrategicInsights(products, summary).join("")}
     </div>`;
@@ -353,8 +355,20 @@ function productCard(product) {
     : `<span class="product-placeholder">◇</span>`;
   const hasEstimate = product.market_suggested && product.effective_min && product.effective_max;
   const range = hasEstimate
-    ? `<strong>${toman(product.market_low)} تا ${toman(product.market_high)}</strong>`
+    ? `<strong>${toman(product.market_suggested)} تومان</strong><span class="market-range">بازه بازار: ${toman(product.market_low)} تا ${toman(product.market_high)}</span>`
     : `<strong class="estimate-error">${escapeHtml(product.estimate_error || "در انتظار تحلیل")}</strong>`;
+  const position = productPricingPosition(product);
+  let priceSignal = "";
+  if (position) {
+    const distance = Math.abs(position.deltaPct);
+    if (distance < 5) {
+      priceSignal = `<span class="price-signal good">در محدوده مناسب</span>`;
+    } else if (position.deltaPct > 0) {
+      priceSignal = `<span class="price-signal lower">پیشنهاد کاهش ${fa(Math.round(distance))}٪</span>`;
+    } else {
+      priceSignal = `<span class="price-signal raise">ظرفیت افزایش ${fa(Math.round(distance))}٪</span>`;
+    }
+  }
   const analysisUrl = escapeHtml(productAnalysisUrl(product));
   const expanded = state.expandedProducts.has(product.product_id);
   return `<article class="product-card" data-product-id="${product.product_id}" data-title="${escapeHtml(product.title.toLowerCase())}">
@@ -363,19 +377,18 @@ function productCard(product) {
       <strong title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</strong>
       <small>موجودی ${fa(product.stock)}${product.category_title ? ` · ${escapeHtml(product.category_title)}` : ""}</small>
     </span></button>
-    <div class="price-block"><small>قیمت فعلی</small><strong>${toman(product.current_price)} تومان</strong></div>
-    <div class="range-block"><small>بازه پیشنهادی</small>${range}</div>
+    <div class="price-block"><small>قیمت فعلی</small><strong>${toman(product.current_price)} تومان</strong>${priceSignal}</div>
+    <div class="range-block"><small>پیشنهاد دقیقه</small>${range}</div>
     <div class="product-actions">
-      <button class="details-toggle" type="button" data-product-toggle="${product.product_id}" aria-expanded="${expanded}">${expanded ? "بستن جزئیات" : "جزئیات محصول"}</button>
-      <a class="elasticity-link" href="/merchant/products/${product.product_id}/elasticity" onclick="recordButtonClick('merchant_elasticity', ${product.product_id})">کشش قیمت</a>
       <a class="analysis-link" href="${analysisUrl}" onclick="recordButtonClick('merchant_analysis', ${product.product_id})">تحلیل بازار</a>
       ${product.market_suggested && state.marketplace === "basalam"
-        ? `<button class="set-price-btn" onclick="setPriceInBasalam(${product.product_id}, ${product.market_suggested || 0})">تنظیم قیمت در باسلام به ${toman(product.market_suggested || 0)} تومان</button>`
+        ? `<button class="set-price-btn" onclick="setPriceInBasalam(${product.product_id}, ${product.market_suggested || 0})">اعمال در باسلام ↗</button>`
         : ""}
+      <button class="details-toggle" type="button" data-product-toggle="${product.product_id}" aria-expanded="${expanded}">${expanded ? "بستن" : "جزئیات"}</button>
     </div>
     </div>
     <section class="product-details" id="product-details-${product.product_id}" ${expanded ? "" : "hidden"}>
-      <div class="product-details-title"><div><small>داده‌های دریافت‌شده از API باسلام</small><strong>${escapeHtml(product.title)}</strong></div>${product.basalam_url ? `<a href="${escapeHtml(product.basalam_url)}" target="_blank" rel="noopener noreferrer">صفحه محصول در باسلام ↗</a>` : ""}</div>
+      <div class="product-details-title"><div><small>جزئیات محصول</small><strong>${escapeHtml(product.title)}</strong></div><div class="product-details-links"><a class="elasticity-link" href="/merchant/products/${product.product_id}/elasticity" onclick="recordButtonClick('merchant_elasticity', ${product.product_id})">کشش قیمت</a>${product.basalam_url ? `<a href="${escapeHtml(product.basalam_url)}" target="_blank" rel="noopener noreferrer">صفحه باسلام ↗</a>` : ""}</div></div>
       ${productFacts(product)}
       ${basalamPriceHistory(product)}
     </section>
@@ -406,10 +419,33 @@ function setPriceInBasalam(productId, price) {
   const url = `https://vendor.basalam.com/edit-product/${productId}`;
   window.open(url, "_blank", "noopener");
 }
+
+function renderOverview(data) {
+  const total = Number(data.summary.products) || data.products.length;
+  const ready = Number(data.summary.estimated) || 0;
+  const status = data.account.analytics_status || "pending";
+  const analyticsLabels = {
+    ready: ["فعال", "تاریخچه فروش به‌روز است"],
+    partial: ["فعال", "بخشی از داده‌ها دریافت شده"],
+    running: ["در حال دریافت", "داده‌های فروش در حال همگام‌سازی است"],
+    pending: ["در حال بررسی", "وضعیت دسترسی در حال بررسی است"],
+    needs_consent: ["نیاز به تأیید", "دسترسی فروش باسلام را تأیید کنید"],
+  };
+  const analytics = state.marketplace === "digikala"
+    ? ["ناموجود", "اتصال فعلی داده تاریخچه فروش ندارد"]
+    : (analyticsLabels[status] || ["در حال بررسی", "وضعیت دسترسی در حال بررسی است"]);
+  document.querySelector("#summary-products").textContent = fa(total);
+  document.querySelector("#summary-ready").textContent = fa(ready);
+  document.querySelector("#summary-review").textContent = fa(Math.max(0, total - ready));
+  document.querySelector("#summary-analytics").textContent = analytics[0];
+  document.querySelector("#summary-analytics-copy").textContent = analytics[1];
+}
+
 async function loadDashboard() {
   const data = await api("/api/merchant/dashboard");
   state.products = data.products;
   state.marketplace = data.account.marketplace || "basalam";
+  renderOverview(data);
   renderStrategicInsights(state.products, data.summary);
   renderPremium(data.premium, data.account);
   state.status = data.account.sync_status;
@@ -419,8 +455,8 @@ async function loadDashboard() {
   const productsButton = document.querySelector("#sync-products-button");
   priceButton.disabled = running;
   productsButton.disabled = running;
-  priceButton.textContent = running ? "در حال به‌روزرسانی…" : "به‌روزرسانی قیمت‌ها";
-  productsButton.textContent = running ? "در حال همگام‌سازی…" : "دریافت دوباره محصولات";
+  priceButton.innerHTML = running ? "در حال به‌روزرسانی…" : `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9A7 7 0 0 1 18 6.5L20 11M4 13l2 4.5A7 7 0 0 0 17.9 15"></path></svg>به‌روزرسانی تحلیل‌ها`;
+  productsButton.textContent = running ? "در حال همگام‌سازی…" : "دریافت محصولات";
   document.querySelector("#sync-caption").textContent = data.account.sync_error
     || `آخرین به‌روزرسانی: ${formatDate(data.account.last_synced_at)}`;
   renderProducts();
@@ -452,12 +488,17 @@ document.querySelector("#sync-products-button").addEventListener("click", async 
     await loadDashboard();
   } catch (error) {
     button.disabled = false;
-    button.textContent = "دریافت دوباره محصولات";
+    button.textContent = "دریافت محصولات";
     toast(error.message);
   }
 });
 document.querySelector("#product-filter").addEventListener("input", renderProducts);
 document.addEventListener("click", event => {
+  const scrollProducts = event.target.closest("[data-scroll-products]");
+  if (scrollProducts) {
+    document.querySelector("#products")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   const strategyAction = event.target.closest("[data-strategy-action]");
   if (strategyAction) {
     const action = strategyAction.dataset.strategyAction;
@@ -483,6 +524,17 @@ document.addEventListener("click", event => {
     renewLink.setAttribute("aria-busy", "true");
   }
 });
+
+const dashboardSections = [...document.querySelectorAll("main > section[id]")];
+const dashboardLinks = [...document.querySelectorAll(".merchant-nav a")];
+if ("IntersectionObserver" in window) {
+  const sectionObserver = new IntersectionObserver(entries => {
+    const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (!visible) return;
+    dashboardLinks.forEach(link => link.classList.toggle("active", link.hash === `#${visible.target.id}`));
+  }, { rootMargin: "-20% 0px -65%", threshold: [0, .25, .6] });
+  dashboardSections.forEach(section => sectionObserver.observe(section));
+}
 function startNotificationPolling() {
   if (state.notificationPollTimer) return;
   state.notificationPollTimer = window.setInterval(() => {
@@ -491,5 +543,9 @@ function startNotificationPolling() {
 }
 
 Promise.all([loadDashboard(), loadNotifications()]).then(() => {
+  if (window.location.hash) {
+    const target = document.querySelector(window.location.hash);
+    window.setTimeout(() => target?.scrollIntoView({ block: "start" }), 0);
+  }
   startNotificationPolling();
 }).catch(error => toast(error.message));
